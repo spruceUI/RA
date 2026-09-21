@@ -28,6 +28,7 @@ RUN dpkg --add-architecture armhf && \
 COPY build-universal32.sh /build-universal32.sh
 RUN chmod +x /build-universal32.sh
 COPY patches/ /patches/
+COPY common_src/ /common_src/
 
 WORKDIR /build
 ENTRYPOINT ["/build-universal32.sh"]

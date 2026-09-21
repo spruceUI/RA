@@ -33,9 +33,15 @@ if [ -d ../patches/pixel2 ] && ls ../patches/pixel2/*.patch 1>/dev/null 2>&1; th
     done
 fi
 
+# Stage the shared IGM sources on top of the patched tree
+cp -r ../common_src/* .
+for f in spruce_igm_platform.h; do
+    [ -f "$f" ] || { echo "FATAL: $f missing - common_src/ was not staged" >&2; exit 1; }
+done
+
 # Configure — Hario's exact flags for Pixel2 (RK3566 / Mali-G52)
 
-export CFLAGS="-Ofast -march=armv8-a -mtune=cortex-a35 -ffunction-sections -fdata-sections -fomit-frame-pointer -flto=auto -DNDEBUG -DHAVE_FILTERS_BUILTIN"
+export CFLAGS="-Ofast -march=armv8-a -mtune=cortex-a35 -ffunction-sections -fdata-sections -fomit-frame-pointer -flto=auto -DNDEBUG -DHAVE_FILTERS_BUILTIN -DIGM_VARIANT_PIXEL2"
 export CXXFLAGS="$CFLAGS"
 export LDFLAGS="$LDFLAGS -Wl,--gc-sections -flto=auto"
 

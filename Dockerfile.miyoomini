@@ -3,6 +3,7 @@ FROM aemiii91/miyoomini-toolchain:latest
 COPY build-miyoomini.sh /build-miyoomini.sh
 RUN chmod +x /build-miyoomini.sh
 COPY patches/ /patches/
+COPY common_src/ /common_src/
 COPY miyoomini_src/ /miyoomini_src/
 
 WORKDIR /build

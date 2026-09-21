@@ -146,6 +146,7 @@ index 0000000..0000000
 + */
 +
 +#include "spruce_igm.h"
++#include "spruce_igm_platform.h"
 +
 +#include <string.h>
 +#include <stdio.h>
@@ -377,8 +378,6 @@ index 0000000..0000000
 +
 +/* ── Enable check (file-based flag) ────────────────────────── */
 +
-+#define IGM_FLAG_PATH "/storage/RetroArch/IGM.txt"
-+
 +bool spruce_igm_is_enabled(void)
 +{
 +   return access(IGM_FLAG_PATH, F_OK) == 0;
@@ -568,13 +567,13 @@ index 0000000..0000000
 +   if (!igm.font)
 +   {
 +      {
-+         const char *font_path = "/storage/RetroArch/nunwen.ttf";
++         const char *font_path = IGM_FONT_PRIMARY;
 +         if (access(font_path, F_OK) != 0)
-+            font_path = "/storage/RetroArch/nunwen.ttf";
++            font_path = IGM_FONT_FALLBACK;
 +         igm.font       = gfx_display_font_file(p_disp, font_path,
-+                              (video_height / 20.0f) * 1.2f, false);
++                              (video_height / 20.0f) * IGM_FONT_SCALE, false);
 +         igm.font_small = gfx_display_font_file(p_disp, font_path,
-+                              (video_height / 28.0f) * 1.2f, false);
++                              (video_height / 28.0f) * IGM_FONT_SCALE, false);
 +      }
 +   }
 +   if (!igm.font)
@@ -589,9 +588,9 @@ index 0000000..0000000
 +   settings = config_get_ptr();
 +
 +   /* ── Layout constants (proportional to screen) ─────── */
-+   int margin     = (video_width * 2 / 100) * 1.2;
-+   int panel_w    = (video_width  * 38 / 100) * 1.2;
-+   int item_h     = (video_height * 8  / 100) * 1.2;
++   int margin     = (video_width * 2 / 100) * IGM_LAYOUT_SCALE;
++   int panel_w    = (video_width  * 38 / 100) * IGM_LAYOUT_SCALE;
++   int item_h     = (video_height * 8  / 100) * IGM_LAYOUT_SCALE;
 +   int title_h    = item_h;
 +   int panel_h    = item_h * IGM_ITEM_COUNT + title_h;
 +   int panel_x    = margin;
@@ -608,11 +607,12 @@ index 0000000..0000000
 +         color_dim_bg, NULL);
 +
 +   /* ── Battery percentage (top-right) ─────────────────── */
-+   if (igm.battery_level >= 0 && igm.font)
++   font_data_t *batt_font = IGM_BATTERY_SMALL ? igm.font_small : igm.font;
++   if (igm.battery_level >= 0 && batt_font)
 +   {
 +      char batt_buf[8];
 +      snprintf(batt_buf, sizeof(batt_buf), "%d%%", igm.battery_level);
-+      igm_draw_text(igm.font, batt_buf,
++      igm_draw_text(batt_font, batt_buf,
 +            (float)(video_width - margin),
 +            (float)(margin + video_height / 28.0f),
 +            video_width, video_height,
