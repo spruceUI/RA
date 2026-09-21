@@ -8,9 +8,10 @@
  * build script selects a variant with -DIGM_VARIANT_PIXEL2 or -DIGM_VARIANT_RGDS
  * and common is the default.
  *
- * IGM_LAYOUT_SCALE is a double and IGM_FONT_SCALE a float on purpose - that is
- * what the pixel2/rgds sources used, and the two round differently either side
- * of a truncation: (1280*2/100) * 1.2 is 29, the same expression with 1.2f is 30.
+ * IGM_LAYOUT_SCALE is a double and IGM_FONT_SCALE a float only because that is
+ * what the pixel2/rgds sources used. They agree on every value these builds
+ * actually produce - the types are kept apart to mirror the original, not to
+ * dodge a rounding difference.
  */
 
 #if defined(IGM_VARIANT_RGDS)

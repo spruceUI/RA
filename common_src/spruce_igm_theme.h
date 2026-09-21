@@ -56,6 +56,7 @@ typedef struct spruce_igm_theme
    float panel_y_pct;             /* only meaningful when !panel_y_auto */
    float separator_inset_pct;     /* of panel width */
    float arrow_inset_pct;         /* of panel width */
+   float accent_w_pct;            /* of panel width, min 2px */
    float text_baseline;           /* fraction of a row's height */
    float title_baseline;          /* fraction of the title row's height */
    float scale;                   /* multiplies the above, on top of the

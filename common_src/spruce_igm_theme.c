@@ -147,6 +147,7 @@ static void igm_theme_set_defaults(spruce_igm_theme_t *t)
    t->panel_y_auto        = true;
    t->separator_inset_pct = 10.0f;
    t->arrow_inset_pct     = 10.0f;
+   t->accent_w_pct        = 100.0f / 80.0f;
    t->separator_h_px      = 1;
    t->shadow_offset_px    = 2;
    t->text_baseline       = 0.68f;
@@ -333,6 +334,8 @@ static bool igm_on_number(void *data, const char *s, size_t len)
             t->separator_inset_pct = v;
          else if (string_is_equal(c->member, "arrow_inset_pct"))
             t->arrow_inset_pct = v;
+         else if (string_is_equal(c->member, "accent_w_pct"))
+            t->accent_w_pct = v;
          else if (string_is_equal(c->member, "separator_h_px"))
             t->separator_h_px = (int)v;
          else if (string_is_equal(c->member, "shadow_offset_px"))
