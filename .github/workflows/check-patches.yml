@@ -58,9 +58,12 @@ jobs:
               for p in "$GITHUB_WORKSPACE/repo/$dir"/*.patch; do
                   [ -f "$p" ] || continue
                   echo "Applying: $(basename "$p")"
-                  case "$(basename "$p")" in
-                      000*) patch -p1 < "$p" ;;
-                      *)    git apply "$p" ;;
+                  # Only the OnionUI patches under patches/miyoomini go through
+                  # patch(1) for fuzz tolerance, as build-miyoomini.sh does.
+                  # Everything else is strict git apply.
+                  case "$dir/$(basename "$p")" in
+                      patches/miyoomini/000*) patch -p1 < "$p" ;;
+                      *)                      git apply "$p" ;;
                   esac
               done
           done
