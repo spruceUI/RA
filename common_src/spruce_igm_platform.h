@@ -14,28 +14,66 @@
  */
 
 #if defined(IGM_VARIANT_RGDS)
-#  define IGM_BASE_DIR      "/storage/RetroArch"
-#  define IGM_FONT_PRIMARY  "/storage/RetroArch/nunwen.ttf"
-#  define IGM_FONT_FALLBACK "/storage/RetroArch/nunwen.ttf"
-#  define IGM_LAYOUT_SCALE  1.2
-#  define IGM_FONT_SCALE    1.2f
-#  define IGM_BATTERY_SMALL 0
+#  ifndef IGM_BASE_DIR
+#    define IGM_BASE_DIR      "/storage/RetroArch"
+#  endif
+#  ifndef IGM_FONT_PRIMARY
+#    define IGM_FONT_PRIMARY  "/storage/RetroArch/nunwen.ttf"
+#  endif
+#  ifndef IGM_FONT_FALLBACK
+#    define IGM_FONT_FALLBACK "/storage/RetroArch/nunwen.ttf"
+#  endif
+#  ifndef IGM_LAYOUT_SCALE
+#    define IGM_LAYOUT_SCALE  1.2
+#  endif
+#  ifndef IGM_FONT_SCALE
+#    define IGM_FONT_SCALE    1.2f
+#  endif
+#  ifndef IGM_BATTERY_SMALL
+#    define IGM_BATTERY_SMALL 0
+#  endif
 #elif defined(IGM_VARIANT_PIXEL2)
-#  define IGM_BASE_DIR      "/mnt/SDCARD/RetroArch"
-#  define IGM_FONT_PRIMARY  "/mnt/SDCARD/Themes/SPRUCE/nunwen.ttf"
-#  define IGM_FONT_FALLBACK "/mnt/SDCARD/App/PixelReader/resources/fonts/nunwen.ttf"
-#  define IGM_LAYOUT_SCALE  1.2
-#  define IGM_FONT_SCALE    1.2f
-#  define IGM_BATTERY_SMALL 0
+#  ifndef IGM_BASE_DIR
+#    define IGM_BASE_DIR      "/mnt/SDCARD/RetroArch"
+#  endif
+#  ifndef IGM_FONT_PRIMARY
+#    define IGM_FONT_PRIMARY  "/mnt/SDCARD/Themes/SPRUCE/nunwen.ttf"
+#  endif
+#  ifndef IGM_FONT_FALLBACK
+#    define IGM_FONT_FALLBACK "/mnt/SDCARD/App/PixelReader/resources/fonts/nunwen.ttf"
+#  endif
+#  ifndef IGM_LAYOUT_SCALE
+#    define IGM_LAYOUT_SCALE  1.2
+#  endif
+#  ifndef IGM_FONT_SCALE
+#    define IGM_FONT_SCALE    1.2f
+#  endif
+#  ifndef IGM_BATTERY_SMALL
+#    define IGM_BATTERY_SMALL 0
+#  endif
 #else
-#  define IGM_BASE_DIR      "/mnt/SDCARD/RetroArch"
-#  define IGM_FONT_PRIMARY  "/mnt/SDCARD/Themes/SPRUCE/nunwen.ttf"
-#  define IGM_FONT_FALLBACK "/mnt/SDCARD/App/PixelReader/resources/fonts/nunwen.ttf"
-#  define IGM_LAYOUT_SCALE  1.0
-#  define IGM_FONT_SCALE    1.0f
-#  define IGM_BATTERY_SMALL 1
+#  ifndef IGM_BASE_DIR
+#    define IGM_BASE_DIR      "/mnt/SDCARD/RetroArch"
+#  endif
+#  ifndef IGM_FONT_PRIMARY
+#    define IGM_FONT_PRIMARY  "/mnt/SDCARD/Themes/SPRUCE/nunwen.ttf"
+#  endif
+#  ifndef IGM_FONT_FALLBACK
+#    define IGM_FONT_FALLBACK "/mnt/SDCARD/App/PixelReader/resources/fonts/nunwen.ttf"
+#  endif
+#  ifndef IGM_LAYOUT_SCALE
+#    define IGM_LAYOUT_SCALE  1.0
+#  endif
+#  ifndef IGM_FONT_SCALE
+#    define IGM_FONT_SCALE    1.0f
+#  endif
+#  ifndef IGM_BATTERY_SMALL
+#    define IGM_BATTERY_SMALL 1
+#  endif
 #endif
 
-#define IGM_FLAG_PATH IGM_BASE_DIR "/IGM.txt"
+#ifndef IGM_FLAG_PATH
+#  define IGM_FLAG_PATH IGM_BASE_DIR "/IGM.txt"
+#endif
 
 #endif /* SPRUCE_IGM_PLATFORM_H */

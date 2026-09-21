@@ -2,11 +2,12 @@ diff --git a/Makefile.common b/Makefile.common
 index 57dabf5..f147cbd 100644
 --- a/Makefile.common
 +++ b/Makefile.common
-@@ -238,6 +238,7 @@ endif
+@@ -238,6 +238,8 @@ endif
  
  OBJ += frontend/frontend_driver.o \
         retroarch.o \
 +       spruce_igm.o \
++       spruce_igm_theme.o \
         runloop.o \
         ui/ui_companion_driver.o \
         camera/camera_driver.o \
