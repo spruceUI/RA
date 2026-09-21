@@ -129,7 +129,7 @@ new file mode 100644
 index 0000000..0000000
 --- /dev/null
 +++ b/spruce_igm.c
-@@ -0,0 +1,614 @@
+@@ -0,0 +1,605 @@
 +/*
 + * Spruce IGM - Simple in-game menu for spruceOS handhelds
 + *
@@ -188,18 +188,17 @@ index 0000000..0000000
 +   "Exit Game"
 +};
 +
-+/* ── Colours — matched to spruceOS theme ───────────────────── */
++/* ── Colours — black and white ─────────────────────────────── */
 +
 +static float color_dim_bg[16]     = COLOR_HEX_TO_FLOAT(0x000000, 0.85f);
-+static float color_selected[16]   = COLOR_HEX_TO_FLOAT(0xC9A227, 0.18f);
-+static float color_accent[16]     = COLOR_HEX_TO_FLOAT(0xC9A227, 0.85f);
-+static float color_title_line[16] = COLOR_HEX_TO_FLOAT(0x665C54, 0.40f);
++static float color_selected[16]   = COLOR_HEX_TO_FLOAT(0xFFFFFF, 1.00f);
++static float color_title_line[16] = COLOR_HEX_TO_FLOAT(0xFFFFFF, 0.40f);
 +
 +/* RRGGBBAA format for gfx_display_draw_text */
-+#define TEXT_COLOR_NORMAL   0xBDAD91FFu   /* warm gray       */
-+#define TEXT_COLOR_SELECTED 0xD5C4A1FFu   /* warm cream      */
-+#define TEXT_COLOR_TITLE    0x689D6AFFu   /* spruce green    */
-+#define TEXT_COLOR_SHADOW   0x000000C0u   /* black, 75%      */
++#define TEXT_COLOR_NORMAL   0xFFFFFFFFu
++#define TEXT_COLOR_SELECTED 0x000000FFu   /* on the white selection fill */
++#define TEXT_COLOR_TITLE    0xFFFFFFFFu
++#define TEXT_COLOR_SHADOW   0x000000C0u
 +
 +#define IGM_NO_PENDING      -1
 +#define IGM_PREVIEW_NO_SLOT  -999
@@ -244,16 +243,17 @@ index 0000000..0000000
 +#define IGM_PRESSED(cur, prev, btn) \
 +   (((cur) & (1 << (btn))) && !((prev) & (1 << (btn))))
 +
-+/* Draw text with a dark shadow for readability over any background */
++/* Dark shadow for readability, except on the white selection fill */
 +static void igm_draw_text(font_data_t *font, const char *text,
 +      float x, float y,
 +      unsigned vw, unsigned vh,
 +      uint32_t color, enum text_alignment align)
 +{
-+   gfx_display_draw_text(font, text,
-+         x + 2.0f, y + 2.0f, vw, vh,
-+         TEXT_COLOR_SHADOW, align,
-+         1.0f, false, 0.0f, false);
++   if (color != TEXT_COLOR_SELECTED)
++      gfx_display_draw_text(font, text,
++            x + 2.0f, y + 2.0f, vw, vh,
++            TEXT_COLOR_SHADOW, align,
++            1.0f, false, 0.0f, false);
 +   gfx_display_draw_text(font, text,
 +         x, y, vw, vh,
 +         color, align,
@@ -597,8 +597,6 @@ index 0000000..0000000
 +   int panel_x    = margin;
 +   int panel_y    = (video_height - panel_h) / 2;
 +   int text_cx    = panel_x + panel_w / 2;
-+   int accent_w   = panel_w / 80;
-+   if (accent_w < 2) accent_w = 2;
 +
 +   /* ── Full-screen dim ───────────────────────────────── */
 +   gfx_display_draw_quad(p_disp, userdata,
@@ -641,20 +639,13 @@ index 0000000..0000000
 +      int iy        = panel_y + title_h + i * item_h;
 +      bool selected = (i == igm.selected);
 +
-+      /* Selection: subtle highlight + left accent bar */
++      /* Selection: inverted fill */
 +      if (selected)
-+      {
 +         gfx_display_draw_quad(p_disp, userdata,
 +               video_width, video_height,
 +               panel_x, iy, panel_w, item_h,
 +               video_width, video_height,
 +               color_selected, NULL);
-+         gfx_display_draw_quad(p_disp, userdata,
-+               video_width, video_height,
-+               panel_x, iy, accent_w, item_h,
-+               video_width, video_height,
-+               color_accent, NULL);
-+      }
 +
 +      /* Label text (save/load rows include slot number) */
 +      {

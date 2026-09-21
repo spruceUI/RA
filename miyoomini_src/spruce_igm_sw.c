@@ -49,13 +49,12 @@ static const char *igm_labels[IGM_ITEM_COUNT] = {
 
 /* ── Colours (ARGB8888) ────────────────────────────────────── */
 
-#define COL_TEXT        0xFFBDAD91u
-#define COL_TEXT_SEL    0xFFD5C4A1u
-#define COL_TEXT_TITLE  0xFF689D6Au
+#define COL_TEXT        0xFFFFFFFFu
+#define COL_TEXT_SEL    0xFF000000u   /* on the white selection fill */
+#define COL_TEXT_TITLE  0xFFFFFFFFu
 #define COL_SHADOW      0xC0000000u
-#define COL_SELECTED    0x1FC9A227u
-#define COL_ACCENT      0xD9C9A227u
-#define COL_TITLE_LINE  0x66665C54u
+#define COL_SELECTED    0xFFFFFFFFu
+#define COL_TITLE_LINE  0x66FFFFFFu
 
 #define IGM_NO_PENDING   -1
 #define IGM_FLAG_PATH    "/mnt/SDCARD/RetroArch/IGM.txt"
@@ -555,9 +554,7 @@ void spruce_igm_sw_frame(uint32_t *draw_buf, const uint32_t *front_buf,
    int panel_x  = margin;
    int panel_y  = (height - panel_h) / 2;
    int text_cx  = panel_x + panel_w / 2;
-   int accent_w = panel_w / 80;
    int glyph_h  = FONT_HEIGHT * 2;
-   if (accent_w < 2) accent_w = 2;
 
    /* ── Draw dimmed background ──────────────────────── */
    if (igm.bg_capture)
@@ -618,16 +615,11 @@ void spruce_igm_sw_frame(uint32_t *draw_buf, const uint32_t *front_buf,
       uint32_t text_col;
       int tw, tx, ty;
 
-      /* Selection highlight + accent bar */
+      /* Selection: inverted fill */
       if (selected)
-      {
-         fill_rect_blend(draw_buf, pitch,
+         fill_rect_solid(draw_buf, pitch,
                panel_x, iy, panel_w, item_h,
                width, height, COL_SELECTED);
-         fill_rect_blend(draw_buf, pitch,
-               panel_x, iy, accent_w, item_h,
-               width, height, COL_ACCENT);
-      }
 
       /* Label text */
       if (i == IGM_SAVE_STATE || i == IGM_LOAD_STATE)
