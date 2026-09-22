@@ -143,9 +143,10 @@ static void fill_rect_solid(uint32_t *buf, unsigned pitch,
 }
 
 /* Nearest-neighbour expansion of the bitmap font. The scale was a hardcoded 2
- * in four places; it is now the theme's, so layout.scale moves the text along
- * with the panel. There is no TTF on this device, so font.path and the font
- * size keys do nothing here. */
+ * in four places; it now follows layout.scale - but only in whole steps, since
+ * a bitmap glyph cannot be drawn at 2.4x. So the text tracks the panel coarsely:
+ * scale 1.5 takes it from 2x to 3x, while scale 1.2 leaves it at 2x and only the
+ * panel grows. There is no TTF here, so font.path and the font sizes do nothing. */
 static int draw_char(uint32_t *buf, unsigned pitch,
       unsigned scr_w, unsigned scr_h,
       int x, int y, char ch, uint32_t color,
@@ -520,9 +521,12 @@ void spruce_igm_sw_frame(uint32_t *draw_buf, const uint32_t *front_buf,
    int i;
    char slot_buf[64];
    settings_t *settings;
+   const spruce_igm_theme_t *t;
 
    if (!igm.active)
       return;
+
+   t = igm.theme ? igm.theme : spruce_igm_theme_get();
 
    /* Capture background on first frame */
    if (igm.needs_bg_capture)
@@ -539,14 +543,15 @@ void spruce_igm_sw_frame(uint32_t *draw_buf, const uint32_t *front_buf,
    if (!igm_handle_input(draw_buf, width, height))
       return;
 
-   /* Update preview if slot changed */
-   igm_update_preview();
+   /* Update preview if slot changed. Skipped when the theme hides it -
+    * decoding a PNG and running the scaler for something nobody draws is pure
+    * cost, and this is the weakest device we ship on. */
+   if (t->show_preview)
+      igm_update_preview();
 
    settings = config_get_ptr();
 
    /* ── Layout constants ────────────────────────────── */
-   const spruce_igm_theme_t *t = igm.theme ? igm.theme
-                                 : spruce_igm_theme_get();
    double s     = t->scale;
    int gs       = (int)(2.0f * t->scale);
    int margin   = IGM_PCT(width,  t->margin_pct)  * s;
@@ -554,6 +559,8 @@ void spruce_igm_sw_frame(uint32_t *draw_buf, const uint32_t *front_buf,
    int item_h   = IGM_PCT(height, t->item_h_pct)  * s;
    int title_h  = IGM_PCT(height, t->title_h_pct) * s;
    int panel_h  = item_h * IGM_ITEM_COUNT + title_h;
+   /* Sizes are scaled by s; explicit positions deliberately are not - see the
+    * GPU copy for why. */
    int panel_x  = t->panel_x_auto ? margin : IGM_PCT(width, t->panel_x_pct);
    int panel_y  = t->panel_y_auto ? (height - panel_h) / 2
                   : IGM_PCT(height, t->panel_y_pct);

@@ -87,9 +87,16 @@ jobs:
               sed -n '/^+++ b\/spruce_igm\.c$/,/^diff --git a\/spruce_igm\.h$/p' "$1"
           }
           extract patches/common/0001-spruce-igm.patch > /tmp/common.body
+          # An empty extract would make every diff below succeed and report
+          # agreement while the bodies had actually diverged - which is the one
+          # thing this job exists to catch. Insist on content.
+          test -s /tmp/common.body \
+            || { echo "FATAL: could not extract spruce_igm.c from the common patch" >&2; exit 1; }
           for v in pixel2 rgds; do
               extract "patches/$v/0012-spruce-igm.patch" > /tmp/$v.body
+              test -s /tmp/$v.body \
+                || { echo "FATAL: could not extract spruce_igm.c from the $v patch" >&2; exit 1; }
               diff -u /tmp/common.body /tmp/$v.body \
                 || { echo "FATAL: $v spruce_igm.c has drifted from common" >&2; exit 1; }
           done
-          echo "common, pixel2 and rgds agree"
+          echo "common, pixel2 and rgds agree ($(wc -l < /tmp/common.body) lines)"

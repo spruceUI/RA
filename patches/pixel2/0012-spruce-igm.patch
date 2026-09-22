@@ -130,7 +130,7 @@ new file mode 100644
 index 0000000..0000000
 --- /dev/null
 +++ b/spruce_igm.c
-@@ -0,0 +1,681 @@
+@@ -0,0 +1,688 @@
 +/*
 + * Spruce IGM - Simple in-game menu for spruceOS handhelds
 + *
@@ -242,9 +242,8 @@ index 0000000..0000000
 +#define IGM_PRESSED(cur, prev, btn) \
 +   (((cur) & (1 << (btn))) && !((prev) & (1 << (btn))))
 +
-+/* Shadow is an explicit argument rather than something inferred from the text
-+ * colour. It used to be "draw a shadow unless the colour is the selected one",
-+ * which breaks the moment a theme picks that same colour for anything else. */
++/* The shadow used to be unconditional. It is an argument now so a theme can
++ * turn it off, and so the colour comes from the theme rather than a #define. */
 +static void igm_draw_text(font_data_t *font, const char *text,
 +      float x, float y,
 +      unsigned vw, unsigned vh,
@@ -622,8 +621,11 @@ index 0000000..0000000
 +   /* Handle input — may set pending_action for deferred execution */
 +   igm_handle_input();
 +
-+   /* Update preview texture if slot changed or selection moved */
-+   igm_update_preview();
++   /* Update preview texture if slot changed or selection moved. Skipped
++    * entirely when the theme hides it - decoding a PNG and running the scaler
++    * for something nobody draws is pure cost, and worst on the weakest device. */
++   if (t->show_preview)
++      igm_update_preview();
 +
 +   settings = config_get_ptr();
 +
@@ -634,6 +636,11 @@ index 0000000..0000000
 +   int item_h     = IGM_PCT(video_height, t->item_h_pct)  * s;
 +   int title_h    = IGM_PCT(video_height, t->title_h_pct) * s;
 +   int panel_h    = item_h * IGM_ITEM_COUNT + title_h;
++   /* Sizes above are scaled by s; these positions deliberately are not. "Put
++    * the panel at 40% of the screen" means that on every device - scaling it
++    * would move the panel rather than enlarge it. The consequence is that an
++    * explicit panel_x_pct of 2.0 does not reproduce the auto margin on the
++    * 1.2x devices; auto is there for that. */
 +   int panel_x    = t->panel_x_auto ? margin
 +                    : IGM_PCT(video_width, t->panel_x_pct);
 +   int panel_y    = t->panel_y_auto ? (video_height - panel_h) / 2
