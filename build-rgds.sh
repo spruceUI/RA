@@ -33,9 +33,15 @@ if [ -d ../patches/rgds ] && ls ../patches/rgds/*.patch 1>/dev/null 2>&1; then
     done
 fi
 
+# Stage the shared IGM sources on top of the patched tree
+cp -r ../common_src/* .
+for f in spruce_igm_platform.h spruce_igm_theme.h spruce_igm_theme.c; do
+    [ -f "$f" ] || { echo "FATAL: $f missing - common_src/ was not staged" >&2; exit 1; }
+done
+
 # Configure — same flags as Pixel2 (RK3566 / Mali-G52)
 
-export CFLAGS="-Ofast -mcpu=cortex-a55 -ffunction-sections -fdata-sections -fomit-frame-pointer -flto=auto -DNDEBUG -DHAVE_FILTERS_BUILTIN"
+export CFLAGS="-Ofast -mcpu=cortex-a55 -ffunction-sections -fdata-sections -fomit-frame-pointer -flto=auto -DNDEBUG -DHAVE_FILTERS_BUILTIN -DIGM_VARIANT_RGDS"
 export CXXFLAGS="$CFLAGS"
 export LDFLAGS="$LDFLAGS -Wl,--gc-sections -flto=auto"
 

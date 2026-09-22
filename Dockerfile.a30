@@ -57,6 +57,7 @@ RUN SYSROOT=/opt/a30/arm-a30-linux-gnueabihf/sysroot && \
 COPY build-a30.sh /build-a30.sh
 RUN chmod +x /build-a30.sh
 COPY patches/ /patches/
+COPY common_src/ /common_src/
 
 WORKDIR /build
 ENTRYPOINT ["/build-a30.sh"]

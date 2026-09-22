@@ -122,6 +122,7 @@ TARGET = $(PACKAGE_NAME)
 OBJ :=
 OBJ += miyoomini.o
 OBJ += spruce_igm_sw.o
+OBJ += spruce_igm_theme.o
 LINK := $(CXX)
 DEF_FLAGS := -marm -mtune=cortex-a7 -march=armv7ve+simd -mfpu=neon-vfpv4 -mfloat-abi=hard -ffast-math -fomit-frame-pointer
 DEF_FLAGS += -ffunction-sections -fdata-sections

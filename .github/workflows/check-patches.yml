@@ -1,0 +1,102 @@
+name: Check patches
+
+# Cheap pre-flight. A stale hunk count otherwise costs a whole Docker build
+# slot to discover, on one target out of eight.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: common
+            ref: v1.22.2
+            dirs: patches/common
+            crlf: false
+          - name: a30
+            ref: v1.22.2
+            dirs: patches/common patches/a30
+            crlf: false
+          - name: miyoomini
+            ref: v1.22.2
+            dirs: patches/miyoomini
+            crlf: true
+          - name: pixel2
+            ref: e5eff6db27cd37c3c318741ee8bb9a3b8b60ec62
+            dirs: patches/pixel2
+            crlf: true
+          - name: rgds
+            ref: e5eff6db27cd37c3c318741ee8bb9a3b8b60ec62
+            dirs: patches/rgds
+            crlf: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: repo
+
+      - name: Fetch RetroArch ${{ matrix.ref }}
+        run: |
+          git init RetroArch
+          cd RetroArch
+          git remote add origin https://github.com/libretro/RetroArch.git
+          git fetch --depth 1 origin "${{ matrix.ref }}"
+          git checkout FETCH_HEAD
+
+      - name: Apply ${{ matrix.name }} patches
+        run: |
+          cd RetroArch
+          if [ "${{ matrix.crlf }}" = "true" ]; then
+              find . -type f \( -name '*.c' -o -name '*.h' \) -exec sed -i 's/\r$//' {} +
+          fi
+          for dir in ${{ matrix.dirs }}; do
+              for p in "$GITHUB_WORKSPACE/repo/$dir"/*.patch; do
+                  [ -f "$p" ] || continue
+                  echo "Applying: $(basename "$p")"
+                  # Only the OnionUI patches under patches/miyoomini go through
+                  # patch(1) for fuzz tolerance, as build-miyoomini.sh does.
+                  # Everything else is strict git apply.
+                  case "$dir/$(basename "$p")" in
+                      patches/miyoomini/000*) patch -p1 < "$p" ;;
+                      *)                      git apply "$p" ;;
+                  esac
+              done
+          done
+
+      - name: Stage common_src
+        run: |
+          cd RetroArch
+          cp -r "$GITHUB_WORKSPACE/repo/common_src"/* .
+          test -f spruce_igm_platform.h
+
+  igm-in-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # spruce_igm.c is one file built three ways; everything that differs
+      # between the variants lives in common_src/spruce_igm_platform.h.
+      - name: GPU IGM bodies are identical
+        run: |
+          extract() {
+              sed -n '/^+++ b\/spruce_igm\.c$/,/^diff --git a\/spruce_igm\.h$/p' "$1"
+          }
+          extract patches/common/0001-spruce-igm.patch > /tmp/common.body
+          # An empty extract would make every diff below succeed and report
+          # agreement while the bodies had actually diverged - which is the one
+          # thing this job exists to catch. Insist on content.
+          test -s /tmp/common.body \
+            || { echo "FATAL: could not extract spruce_igm.c from the common patch" >&2; exit 1; }
+          for v in pixel2 rgds; do
+              extract "patches/$v/0012-spruce-igm.patch" > /tmp/$v.body
+              test -s /tmp/$v.body \
+                || { echo "FATAL: could not extract spruce_igm.c from the $v patch" >&2; exit 1; }
+              diff -u /tmp/common.body /tmp/$v.body \
+                || { echo "FATAL: $v spruce_igm.c has drifted from common" >&2; exit 1; }
+          done
+          echo "common, pixel2 and rgds agree ($(wc -l < /tmp/common.body) lines)"

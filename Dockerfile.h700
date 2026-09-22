@@ -40,6 +40,7 @@ RUN dpkg --add-architecture arm64 && \
 COPY build-h700.sh /build-h700.sh
 RUN chmod +x /build-h700.sh
 COPY patches/ /patches/
+COPY common_src/ /common_src/
 
 WORKDIR /build
 ENTRYPOINT ["/build-h700.sh"]

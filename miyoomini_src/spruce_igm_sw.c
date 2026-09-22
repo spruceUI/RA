@@ -7,6 +7,7 @@
  */
 
 #include "spruce_igm_sw.h"
+#include "spruce_igm_theme.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -20,6 +21,7 @@
 #include "runloop.h"
 #include "input/input_driver.h"
 #include "menu/menu_driver.h"
+#include <string/stdstring.h>
 #include <formats/image.h>
 #include <gfx/scaler/scaler.h>
 #include <sys/stat.h>
@@ -38,24 +40,13 @@ enum spruce_igm_sw_item
    IGM_ITEM_COUNT
 };
 
-static const char *igm_labels[IGM_ITEM_COUNT] = {
-   "Resume",
-   "Save",
-   "Load",
-   "Reset",
-   "RetroArch Menu",
-   "Exit Game"
-};
+/* Colours come from the theme, as ARGB8888 for this blitter. The shadow
+ * colour is not used here - this renderer has no shadow pass at all. */
 
-/* ── Colours (ARGB8888) ────────────────────────────────────── */
+typedef char igm_sw_item_count_matches[
+   (IGM_ITEM_COUNT == SPRUCE_IGM_ITEM_COUNT) ? 1 : -1];
 
-#define COL_TEXT        0xFFBDAD91u
-#define COL_TEXT_SEL    0xFFD5C4A1u
-#define COL_TEXT_TITLE  0xFF689D6Au
-#define COL_SHADOW      0xC0000000u
-#define COL_SELECTED    0x1FC9A227u
-#define COL_ACCENT      0xD9C9A227u
-#define COL_TITLE_LINE  0x66665C54u
+#define IGM_PCT(total, pct)  ((int)((total) * (pct) / 100.0f))
 
 #define IGM_NO_PENDING   -1
 #define IGM_FLAG_PATH    "/mnt/SDCARD/RetroArch/IGM.txt"
@@ -70,6 +61,7 @@ static struct
    int         selected;
    int         pending_action;
    int         deferred_close;
+   const spruce_igm_theme_t *theme;
    uint16_t    prev_buttons;
    uint32_t   *bg_capture;
    int         battery_level;
@@ -150,61 +142,66 @@ static void fill_rect_solid(uint32_t *buf, unsigned pitch,
    }
 }
 
-/* Draw a single character at 2x scale.  Returns advance in pixels. */
+/* Nearest-neighbour expansion of the bitmap font. The scale was a hardcoded 2
+ * in four places; it now follows layout.scale - but only in whole steps, since
+ * a bitmap glyph cannot be drawn at 2.4x. So the text tracks the panel coarsely:
+ * scale 1.5 takes it from 2x to 3x, while scale 1.2 leaves it at 2x and only the
+ * panel grows. There is no TTF here, so font.path and the font sizes do nothing. */
 static int draw_char(uint32_t *buf, unsigned pitch,
       unsigned scr_w, unsigned scr_h,
       int x, int y, char ch, uint32_t color,
-      bitmapfont_lut_t *font)
+      bitmapfont_lut_t *font, int gs)
 {
-   int i, j;
+   int i, j, sx, sy;
    unsigned symbol = (unsigned char)ch;
    bool *lut;
 
    if (!font || symbol >= font->glyph_max)
-      return FONT_WIDTH_STRIDE * 2;
+      return FONT_WIDTH_STRIDE * gs;
 
    lut = font->lut[symbol];
    if (!lut)
-      return FONT_WIDTH_STRIDE * 2;
+      return FONT_WIDTH_STRIDE * gs;
 
    for (j = 0; j < FONT_HEIGHT; j++)
    {
       for (i = 0; i < FONT_WIDTH; i++)
       {
-         if (lut[i + j * FONT_WIDTH])
+         if (!lut[i + j * FONT_WIDTH])
+            continue;
+         for (sy = 0; sy < gs; sy++)
          {
-            int px = x + i * 2;
-            int py = y + j * 2;
-            if (px >= 0 && px + 1 < (int)scr_w &&
-                py >= 0 && py + 1 < (int)scr_h)
+            int py = y + j * gs + sy;
+            if (py < 0 || py >= (int)scr_h)
+               continue;
+            for (sx = 0; sx < gs; sx++)
             {
-               buf[(py    ) * pitch + px    ] = color;
-               buf[(py    ) * pitch + px + 1] = color;
-               buf[(py + 1) * pitch + px    ] = color;
-               buf[(py + 1) * pitch + px + 1] = color;
+               int px = x + i * gs + sx;
+               if (px >= 0 && px < (int)scr_w)
+                  buf[py * pitch + px] = color;
             }
          }
       }
    }
-   return FONT_WIDTH_STRIDE * 2;
+   return FONT_WIDTH_STRIDE * gs;
 }
 
 static void draw_text(uint32_t *buf, unsigned pitch,
       unsigned scr_w, unsigned scr_h,
       int x, int y, const char *text, uint32_t color,
-      bitmapfont_lut_t *font)
+      bitmapfont_lut_t *font, int gs)
 {
    while (*text)
    {
       x += draw_char(buf, pitch, scr_w, scr_h,
-            x, y, *text, color, font);
+            x, y, *text, color, font, gs);
       text++;
    }
 }
 
-static int text_width(const char *text)
+static int text_width(const char *text, int gs)
 {
-   return (int)strlen(text) * FONT_WIDTH_STRIDE * 2;
+   return (int)strlen(text) * FONT_WIDTH_STRIDE * gs;
 }
 
 /* ── Preview texture management ────────────────────────────── */
@@ -373,6 +370,8 @@ void spruce_igm_sw_toggle(void)
    else
    {
       runloop_state_t *runloop_st = runloop_state_get_ptr();
+      /* Runloop context - safe to touch the card here. Self-latching. */
+      igm.theme            = spruce_igm_theme_get();
       igm.was_paused       = (runloop_st->flags & RUNLOOP_FLAG_PAUSED) != 0;
       igm.active           = true;
       igm.selected         = 0;
@@ -522,9 +521,12 @@ void spruce_igm_sw_frame(uint32_t *draw_buf, const uint32_t *front_buf,
    int i;
    char slot_buf[64];
    settings_t *settings;
+   const spruce_igm_theme_t *t;
 
    if (!igm.active)
       return;
+
+   t = igm.theme ? igm.theme : spruce_igm_theme_get();
 
    /* Capture background on first frame */
    if (igm.needs_bg_capture)
@@ -541,35 +543,62 @@ void spruce_igm_sw_frame(uint32_t *draw_buf, const uint32_t *front_buf,
    if (!igm_handle_input(draw_buf, width, height))
       return;
 
-   /* Update preview if slot changed */
-   igm_update_preview();
+   /* Update preview if slot changed. Skipped when the theme hides it -
+    * decoding a PNG and running the scaler for something nobody draws is pure
+    * cost, and this is the weakest device we ship on. */
+   if (t->show_preview)
+      igm_update_preview();
 
    settings = config_get_ptr();
 
    /* ── Layout constants ────────────────────────────── */
-   int margin   = width * 2 / 100;
-   int panel_w  = width * 38 / 100;
-   int item_h   = height * 8 / 100;
-   int title_h  = item_h;
+   double s     = t->scale;
+   int gs       = (int)(2.0f * t->scale);
+   int margin   = IGM_PCT(width,  t->margin_pct)  * s;
+   int panel_w  = IGM_PCT(width,  t->panel_w_pct) * s;
+   int item_h   = IGM_PCT(height, t->item_h_pct)  * s;
+   int title_h  = IGM_PCT(height, t->title_h_pct) * s;
    int panel_h  = item_h * IGM_ITEM_COUNT + title_h;
-   int panel_x  = margin;
-   int panel_y  = (height - panel_h) / 2;
+   /* Sizes are scaled by s; explicit positions deliberately are not - see the
+    * GPU copy for why. */
+   int panel_x  = t->panel_x_auto ? margin : IGM_PCT(width, t->panel_x_pct);
+   int panel_y  = t->panel_y_auto ? (height - panel_h) / 2
+                  : IGM_PCT(height, t->panel_y_pct);
    int text_cx  = panel_x + panel_w / 2;
-   int accent_w = panel_w / 80;
-   int glyph_h  = FONT_HEIGHT * 2;
+   int sep_in   = IGM_PCT(panel_w, t->separator_inset_pct);
+   int sep_w    = panel_w - IGM_PCT(panel_w, t->separator_inset_pct * 2.0f);
+   int arrow_in = IGM_PCT(panel_w, t->arrow_inset_pct);
+   int accent_w = IGM_PCT(panel_w, t->accent_w_pct);
+   uint32_t col_text  = spruce_igm_theme_color_argb(t, IGM_COL_TEXT);
+   uint32_t col_sel   = spruce_igm_theme_color_argb(t, IGM_COL_TEXT_SELECTED);
+   uint32_t col_title = spruce_igm_theme_color_argb(t, IGM_COL_TEXT_TITLE);
+   uint32_t col_batt  = spruce_igm_theme_color_argb(t, IGM_COL_BATTERY);
+   uint32_t dim       = spruce_igm_theme_color_rgba(t, IGM_COL_DIM_BG);
+   int glyph_h;
+   if (gs < 1) gs = 1;
+   glyph_h = FONT_HEIGHT * gs;
    if (accent_w < 2) accent_w = 2;
 
    /* ── Draw dimmed background ──────────────────────── */
    if (igm.bg_capture)
    {
+      /* Blend the theme's dim colour over the captured frame, rather than the
+       * fixed 52/256 darkening this used to do. That also brings the Mini into
+       * line with every other device, which has always dimmed by alpha - the
+       * two were never quite the same brightness before. */
       unsigned px;
+      unsigned da = dim & 0xFF;
+      unsigned dr = (dim >> 24) & 0xFF;
+      unsigned dg = (dim >> 16) & 0xFF;
+      unsigned db = (dim >>  8) & 0xFF;
+      unsigned inv = 255 - da;
       uint32_t total_pixels = width * height;
       for (px = 0; px < total_pixels; px++)
       {
          uint32_t c = igm.bg_capture[px];
-         unsigned r = ((c >> 16) & 0xFF) * 52 / 256;
-         unsigned g = ((c >>  8) & 0xFF) * 52 / 256;
-         unsigned b = ( c        & 0xFF) * 52 / 256;
+         unsigned r = (((c >> 16) & 0xFF) * inv + dr * da) / 255;
+         unsigned g = (((c >>  8) & 0xFF) * inv + dg * da) / 255;
+         unsigned b = (( c        & 0xFF) * inv + db * da) / 255;
          uint32_t target_idx = total_pixels - 1 - px;
          draw_buf[target_idx] = 0xFF000000u | (r << 16) | (g << 8) | b;
       }
@@ -577,36 +606,42 @@ void spruce_igm_sw_frame(uint32_t *draw_buf, const uint32_t *front_buf,
    else
       memset(draw_buf, 0, width * height * sizeof(uint32_t));
 
+   /* ── Panel background ────────────────────────────── */
+   if (spruce_igm_theme_color_rgba(t, IGM_COL_PANEL_BG) & 0xFF)
+      fill_rect_blend(draw_buf, pitch, panel_x, panel_y, panel_w, panel_h,
+            width, height,
+            spruce_igm_theme_color_argb(t, IGM_COL_PANEL_BG));
+
    /* ── Battery percentage (top-right) ─────────────── */
-   if (igm.battery_level >= 0)
+   if (t->show_battery && igm.battery_level >= 0)
    {
       char batt_buf[8];
       int batt_tw, batt_x, batt_y;
       snprintf(batt_buf, sizeof(batt_buf), "%d%%", igm.battery_level);
-      batt_tw = text_width(batt_buf);
+      batt_tw = text_width(batt_buf, gs);
       batt_x  = (int)width - margin - batt_tw;
       batt_y  = margin;
       draw_text(draw_buf, pitch, width, height,
-            batt_x, batt_y, batt_buf, COL_TEXT, font);
+            batt_x, batt_y, batt_buf, col_batt, font, gs);
    }
 
    /* ── Title ───────────────────────────────────────── */
+   if (!string_is_empty(t->title))
    {
-      const char *title = "spruceOS Menu";
-      int tw = text_width(title);
+      int tw = text_width(t->title, gs);
       int tx = text_cx - tw / 2;
       int ty = panel_y + (title_h - glyph_h) / 2;
       draw_text(draw_buf, pitch, width, height,
-            tx, ty, title, COL_TEXT_TITLE, font);
+            tx, ty, t->title, col_title, font, gs);
    }
 
    /* Thin line under title */
+   if (t->separator_h_px > 0)
    {
-      int lx = panel_x + panel_w / 10;
-      int lw = panel_w - panel_w / 5;
-      int ly = panel_y + title_h - 1;
-      fill_rect_blend(draw_buf, pitch, lx, ly, lw, 1,
-            width, height, COL_TITLE_LINE);
+      int ly = panel_y + title_h - t->separator_h_px;
+      fill_rect_blend(draw_buf, pitch, panel_x + sep_in, ly,
+            sep_w, t->separator_h_px, width, height,
+            spruce_igm_theme_color_argb(t, IGM_COL_TITLE_LINE));
    }
 
    /* ── Menu items ──────────────────────────────────── */
@@ -618,15 +653,18 @@ void spruce_igm_sw_frame(uint32_t *draw_buf, const uint32_t *front_buf,
       uint32_t text_col;
       int tw, tx, ty;
 
-      /* Selection highlight + accent bar */
+      /* Selection: row fill, plus the accent bar if the theme wants it */
       if (selected)
       {
          fill_rect_blend(draw_buf, pitch,
                panel_x, iy, panel_w, item_h,
-               width, height, COL_SELECTED);
-         fill_rect_blend(draw_buf, pitch,
-               panel_x, iy, accent_w, item_h,
-               width, height, COL_ACCENT);
+               width, height,
+               spruce_igm_theme_color_argb(t, IGM_COL_SELECTION));
+         if (t->accent_bar)
+            fill_rect_blend(draw_buf, pitch,
+                  panel_x, iy, accent_w, item_h,
+                  width, height,
+                  spruce_igm_theme_color_argb(t, IGM_COL_ACCENT));
       }
 
       /* Label text */
@@ -634,40 +672,40 @@ void spruce_igm_sw_frame(uint32_t *draw_buf, const uint32_t *front_buf,
       {
          int slot = settings->ints.state_slot;
          if (slot < 0)
-            snprintf(slot_buf, sizeof(slot_buf), "%s Auto",
-                  igm_labels[i]);
+            snprintf(slot_buf, sizeof(slot_buf), "%s %s",
+                  t->labels[i], t->auto_label);
          else
-            snprintf(slot_buf, sizeof(slot_buf), "%s Slot %d",
-                  igm_labels[i], slot);
+            snprintf(slot_buf, sizeof(slot_buf), "%s %s %d",
+                  t->labels[i], t->slot_label, slot);
          label = slot_buf;
       }
       else
-         label = igm_labels[i];
+         label = t->labels[i];
 
-      text_col = selected ? COL_TEXT_SEL : COL_TEXT;
-      tw = text_width(label);
+      text_col = selected ? col_sel : col_text;
+      tw = text_width(label, gs);
       tx = text_cx - tw / 2;
       ty = iy + (item_h - glyph_h) / 2;
 
       draw_text(draw_buf, pitch, width, height,
-            tx, ty, label, text_col, font);
+            tx, ty, label, text_col, font, gs);
 
       /* Arrows for Save/Load rows */
       if (i == IGM_SAVE_STATE || i == IGM_LOAD_STATE)
       {
          int arrow_y = iy + (item_h - glyph_h) / 2;
          draw_text(draw_buf, pitch, width, height,
-               panel_x + panel_w / 10, arrow_y, "<",
-               selected ? COL_TEXT_SEL : COL_TEXT, font);
+               panel_x + arrow_in, arrow_y, t->arrow_left,
+               selected ? col_sel : col_text, font, gs);
          draw_text(draw_buf, pitch, width, height,
-               panel_x + panel_w - panel_w / 10 - text_width(">"),
-               arrow_y, ">",
-               selected ? COL_TEXT_SEL : COL_TEXT, font);
+               panel_x + panel_w - arrow_in - text_width(t->arrow_right, gs),
+               arrow_y, t->arrow_right,
+               selected ? col_sel : col_text, font, gs);
       }
    }
 
    /* ── Save state preview (right of panel) ───────────── */
-   if (igm.preview_pixels)
+   if (t->show_preview && igm.preview_pixels)
    {
       int preview_area_x = panel_x + panel_w + margin;
       int preview_area_w = (int)width - preview_area_x - margin;

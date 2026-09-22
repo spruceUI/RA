@@ -24,6 +24,12 @@ for dir in /patches/common /patches/a30; do
     fi
 done
 
+# Stage the shared IGM sources on top of the patched tree
+cp -r /common_src/* .
+for f in spruce_igm_platform.h spruce_igm_theme.h spruce_igm_theme.c; do
+    [ -f "$f" ] || { echo "FATAL: $f missing - common_src/ was not staged" >&2; exit 1; }
+done
+
 # A30 buildroot toolchain
 TOOLCHAIN=/opt/a30
 SYSROOT=$TOOLCHAIN/arm-a30-linux-gnueabihf/sysroot

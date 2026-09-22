@@ -33,6 +33,7 @@ RUN dpkg --add-architecture armhf && \
 COPY build-h700-32.sh /build-h700-32.sh
 RUN chmod +x /build-h700-32.sh
 COPY patches/ /patches/
+COPY common_src/ /common_src/
 
 WORKDIR /build
 ENTRYPOINT ["/build-h700-32.sh"]

@@ -31,6 +31,16 @@ jobs:
     with:
       retroarch_version: ${{ inputs.retroarch_version }}
 
+  h700:
+    uses: ./.github/workflows/build-h700.yml
+    with:
+      retroarch_version: ${{ inputs.retroarch_version }}
+
+  h700-32:
+    uses: ./.github/workflows/build-h700-32.yml
+    with:
+      retroarch_version: ${{ inputs.retroarch_version }}
+
   pixel2:
     uses: ./.github/workflows/build-pixel2.yml
 

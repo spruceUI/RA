@@ -29,6 +29,7 @@ RUN dpkg --add-architecture arm64 && \
 COPY build.sh /build.sh
 RUN chmod +x /build.sh
 COPY patches/ /patches/
+COPY common_src/ /common_src/
 
 WORKDIR /build
 ENTRYPOINT ["/build.sh"]

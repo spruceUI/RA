@@ -28,6 +28,12 @@ for p in /patches/miyoomini/*.patch; do
     esac
 done
 
+# Stage the shared IGM sources on top of the patched tree
+cp -r /common_src/* .
+for f in spruce_igm_platform.h spruce_igm_theme.h spruce_igm_theme.c; do
+    [ -f "$f" ] || { echo "FATAL: $f missing - common_src/ was not staged" >&2; exit 1; }
+done
+
 # Copy miyoomini custom source files on top of the patched tree
 cp -r /miyoomini_src/* .
 
