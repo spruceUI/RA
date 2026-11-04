@@ -22,7 +22,7 @@
 #include <boolean.h>
 #include <retro_miscellaneous.h>   /* PATH_MAX_LENGTH */
 
-#define SPRUCE_IGM_ITEM_COUNT 6
+#include "spruce_igm_items.h"
 
 enum spruce_igm_color_id
 {
@@ -78,9 +78,12 @@ typedef struct spruce_igm_theme
    char  font_path[PATH_MAX_LENGTH];
 
    char  title[64];
-   char  labels[SPRUCE_IGM_ITEM_COUNT][48];
+   char  labels[IGM_ID_COUNT][48];
    char  auto_label[24];
    char  slot_label[24];
+   char  max_label[24];
+   char  on_label[24];
+   char  off_label[24];
    char  arrow_left[8];
    char  arrow_right[8];
 

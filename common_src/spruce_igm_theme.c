@@ -126,6 +126,8 @@ static bool igm_parse_color(const char *s, uint32_t *out)
  */
 static void igm_theme_set_defaults(spruce_igm_theme_t *t)
 {
+   int i;
+
    memset(t, 0, sizeof(*t));
 
    t->rgba[IGM_COL_DIM_BG]        = 0x000000D9u;
@@ -165,14 +167,14 @@ static void igm_theme_set_defaults(spruce_igm_theme_t *t)
    strlcpy(t->font_path, IGM_FONT_PRIMARY, sizeof(t->font_path));
 
    strlcpy(t->title,       "spruceOS Menu",  sizeof(t->title));
-   strlcpy(t->labels[0],   "Resume",         sizeof(t->labels[0]));
-   strlcpy(t->labels[1],   "Save",           sizeof(t->labels[1]));
-   strlcpy(t->labels[2],   "Load",           sizeof(t->labels[2]));
-   strlcpy(t->labels[3],   "Reset",          sizeof(t->labels[3]));
-   strlcpy(t->labels[4],   "RetroArch Menu", sizeof(t->labels[4]));
-   strlcpy(t->labels[5],   "Exit Game",      sizeof(t->labels[5]));
+   for (i = 0; i < IGM_ID_COUNT; i++)
+      strlcpy(t->labels[i], spruce_igm_item_default_label(i),
+            sizeof(t->labels[i]));
    strlcpy(t->auto_label,  "Auto",           sizeof(t->auto_label));
    strlcpy(t->slot_label,  "Slot",           sizeof(t->slot_label));
+   strlcpy(t->max_label,   "Max",            sizeof(t->max_label));
+   strlcpy(t->on_label,    "On",             sizeof(t->on_label));
+   strlcpy(t->off_label,   "Off",            sizeof(t->off_label));
    strlcpy(t->arrow_left,  "<",              sizeof(t->arrow_left));
    strlcpy(t->arrow_right, ">",              sizeof(t->arrow_right));
 }
@@ -190,13 +192,6 @@ static const struct { const char *key; int id; } igm_color_keys[] = {
    { "text_title",    IGM_COL_TEXT_TITLE    },
    { "text_shadow",   IGM_COL_TEXT_SHADOW   },
    { "battery",       IGM_COL_BATTERY       },
-};
-
-/* Label keys are a fixed set, never an array: an array would let a theme change
- * the item count, and that count drives both the panel height and the input
- * wrap-around. A keyed object cannot express a different count. */
-static const char *igm_label_keys[SPRUCE_IGM_ITEM_COUNT] = {
-   "resume", "save", "load", "reset", "retroarch", "exit"
 };
 
 /* ── Handlers ──────────────────────────────────────────────── */
@@ -284,6 +279,12 @@ static bool igm_on_string(void *data, const char *s, size_t len)
          { strlcpy(t->auto_label, s, sizeof(t->auto_label)); c->applied++; }
          else if (string_is_equal(c->member, "slot"))
          { strlcpy(t->slot_label, s, sizeof(t->slot_label)); c->applied++; }
+         else if (string_is_equal(c->member, "max"))
+         { strlcpy(t->max_label, s, sizeof(t->max_label)); c->applied++; }
+         else if (string_is_equal(c->member, "on"))
+         { strlcpy(t->on_label, s, sizeof(t->on_label)); c->applied++; }
+         else if (string_is_equal(c->member, "off"))
+         { strlcpy(t->off_label, s, sizeof(t->off_label)); c->applied++; }
          else if (string_is_equal(c->member, "arrow_left"))
          { strlcpy(t->arrow_left, s, sizeof(t->arrow_left)); c->applied++; }
          else if (string_is_equal(c->member, "arrow_right"))
@@ -291,9 +292,9 @@ static bool igm_on_string(void *data, const char *s, size_t len)
          break;
 
       case SEC_LABELS:
-         for (i = 0; i < SPRUCE_IGM_ITEM_COUNT; i++)
+         for (i = 0; i < IGM_ID_COUNT; i++)
          {
-            if (!string_is_equal(c->member, igm_label_keys[i]))
+            if (!string_is_equal(c->member, spruce_igm_item_key(i)))
                continue;
             strlcpy(t->labels[i], s, sizeof(t->labels[i]));
             c->applied++;
