@@ -6,8 +6,8 @@ index 1ed9ce1..2f02d5b 100644
  
  RETRO_BEGIN_DECLS
  
-+/* Longest a TLS read (handshake or record) waits for the server before
-+ * failing, so a silent peer cannot hold the thread forever. */
++/* Longest a TLS handshake read waits for the server before failing, so
++ * a silent peer cannot hold the thread forever. */
 +#ifndef SSL_SOCKET_IO_TIMEOUT_MS
 +#define SSL_SOCKET_IO_TIMEOUT_MS 30000
 +#endif
