@@ -2,12 +2,13 @@ diff --git a/Makefile.common b/Makefile.common
 index 57dabf5..f147cbd 100644
 --- a/Makefile.common
 +++ b/Makefile.common
-@@ -238,6 +238,8 @@ endif
+@@ -238,6 +238,9 @@ endif
  
  OBJ += frontend/frontend_driver.o \
         retroarch.o \
 +       spruce_igm.o \
 +       spruce_igm_theme.o \
++       spruce_igm_items.o \
         runloop.o \
         ui/ui_companion_driver.o \
         camera/camera_driver.o \
@@ -130,7 +131,7 @@ new file mode 100644
 index 0000000..0000000
 --- /dev/null
 +++ b/spruce_igm.c
-@@ -0,0 +1,688 @@
+@@ -0,0 +1,692 @@
 +/*
 + * Spruce IGM - Simple in-game menu for spruceOS handhelds
 + *
@@ -172,27 +173,6 @@ index 0000000..0000000
 +#include <string/stdstring.h>
 +#include "verbosity.h"
 +
-+/* ── Menu item definitions ─────────────────────────────────── */
-+
-+enum spruce_igm_item
-+{
-+   IGM_RESUME = 0,
-+   IGM_SAVE_STATE,
-+   IGM_LOAD_STATE,
-+   IGM_RESET,
-+   IGM_RETROARCH,
-+   IGM_EXIT,
-+   IGM_ITEM_COUNT
-+};
-+
-+/* Labels, colours and geometry all come from the theme now. The item COUNT
-+ * does not: it sets the panel height and the input wrap-around, so it stays a
-+ * compile-time constant. This ties the two together - adding a seventh item
-+ * fails the build here instead of overflowing the theme's label array.
-+ * (Negative-array-size idiom; _Static_assert is not available at -std=gnu99.) */
-+typedef char igm_item_count_matches[
-+   (IGM_ITEM_COUNT == SPRUCE_IGM_ITEM_COUNT) ? 1 : -1];
-+
 +/* Percentage of a dimension, truncated to whole pixels before any scaling -
 + * which is the order the hardcoded version used, and the order that keeps the
 + * pixel2/rgds 1.2x giving the same numbers it always did. */
@@ -200,6 +180,7 @@ index 0000000..0000000
 +
 +#define IGM_NO_PENDING      -1
 +#define IGM_PREVIEW_NO_SLOT  -999
++#define IGM_SHOT_FRAMES      2
 +
 +/* ── State ─────────────────────────────────────────────────── */
 +
@@ -207,9 +188,14 @@ index 0000000..0000000
 +{
 +   bool        active;
 +   bool        was_paused;       /* pause state before IGM opened  */
-+   int         selected;
++   int         rows[IGM_ID_COUNT];  /* item id per row */
++   int         row_count;
++   int         selected;         /* row index */
++   int         top;              /* first row drawn */
 +   int         pending_action;   /* deferred action, or IGM_NO_PENDING */
++   int         pending_stay;     /* action that keeps the menu open */
 +   int         deferred_close;  /* action waiting for button release  */
++   int         shot_frames;      /* frames left before a screenshot */
 +   const spruce_igm_theme_t *theme;
 +   font_data_t *font;
 +   font_data_t *font_small;
@@ -385,14 +371,23 @@ index 0000000..0000000
 +
 +/* ── Toggle (called from runloop context) ──────────────────── */
 +
++static void igm_close(void)
++{
++   igm.active         = false;
++   igm.pending_action = IGM_NO_PENDING;
++   igm.pending_stay   = IGM_NO_PENDING;
++   igm_unload_preview();
++   spruce_igm_items_close();
++}
++
 +void spruce_igm_toggle(void)
 +{
++   if (igm.shot_frames > 0)
++      return;
++
 +   if (igm.active)
 +   {
-+      /* Close IGM — safe to call commands here (runloop context) */
-+      igm.active         = false;
-+      igm.pending_action = IGM_NO_PENDING;
-+      igm_unload_preview();
++      igm_close();
 +
 +      if (!igm.was_paused)
 +         command_event(CMD_EVENT_UNPAUSE, NULL);
@@ -402,23 +397,24 @@ index 0000000..0000000
 +   }
 +   else
 +   {
-+      /* Open IGM */
 +      runloop_state_t *runloop_st = runloop_state_get_ptr();
 +      /* Runloop context, so blocking file I/O is fine here - unlike the render
-+       * callback. Self-latching, so this only touches the card once. */
++       * callback. Both loaders are self-latching. */
 +      igm.theme          = spruce_igm_theme_get();
++      igm.row_count      = spruce_igm_items_open(igm.rows, IGM_ID_COUNT);
 +      igm.was_paused     = (runloop_st->flags & RUNLOOP_FLAG_PAUSED) != 0;
 +      igm.active         = true;
 +      igm.selected       = 0;
++      igm.top            = 0;
 +      igm.pending_action = IGM_NO_PENDING;
++      igm.pending_stay   = IGM_NO_PENDING;
 +      igm.deferred_close = IGM_NO_PENDING;
 +
 +      /* Flush button state so we don't act on the toggle press itself */
 +      igm.prev_buttons   = 0xFFFF;
 +      igm.battery_level  = igm_read_battery();
 +      igm.preview_slot   = IGM_PREVIEW_NO_SLOT;
-+      igm.state_path[0] = '\0';
-+      /* Pause the core if it isn't already */
++      igm.state_path[0]  = '\0';
 +      if (!igm.was_paused)
 +         command_event(CMD_EVENT_PAUSE, NULL);
 +   }
@@ -433,48 +429,50 @@ index 0000000..0000000
 +
 +void spruce_igm_process_pending(void)
 +{
-+   int action;
++   int id;
++
++   /* GPU screenshots read the backbuffer, so stay paused until a frame has
++    * been presented without the menu. */
++   if (igm.shot_frames > 0)
++   {
++      if (--igm.shot_frames == 0)
++      {
++         spruce_igm_item_run(IGM_ID_SCREENSHOT);
++         if (!igm.was_paused)
++            command_event(CMD_EVENT_UNPAUSE, NULL);
++      }
++      return;
++   }
++
++   if (igm.pending_stay != IGM_NO_PENDING)
++   {
++      id               = igm.pending_stay;
++      igm.pending_stay = IGM_NO_PENDING;
++      spruce_igm_item_run(id);
++      return;
++   }
 +
 +   if (igm.pending_action == IGM_NO_PENDING)
 +      return;
 +
-+   action             = igm.pending_action;
-+   igm.pending_action = IGM_NO_PENDING;
-+   igm.active         = false;
-+   igm_unload_preview();
-+
-+   /* Unpause before executing the action.
-+    * We unpause for all actions (including RA menu)
-+    * so the target system starts from a clean state. */
-+   if (!igm.was_paused)
-+      command_event(CMD_EVENT_UNPAUSE, NULL);
++   id = igm.pending_action;
++   igm_close();
 +
 +   /* Prevent the action button from bleeding into the game */
 +   menu_state_get_ptr()->input_driver_flushing_input = 2;
 +
-+   switch (action)
++   if (id == IGM_ID_SCREENSHOT)
 +   {
-+      case IGM_RESUME:
-+         /* Already unpaused above */
-+         break;
-+      case IGM_LOAD_STATE:
-+         command_event(CMD_EVENT_LOAD_STATE, NULL);
-+         /* CMD_EVENT_LOAD_STATE sets run_frames_and_pause when
-+          * called while paused, which would re-pause after one
-+          * frame.  We already unpaused, but cancel it anyway
-+          * in case of a race. */
-+         runloop_state_get_ptr()->run_frames_and_pause = 0;
-+         break;
-+      case IGM_RESET:
-+         command_event(CMD_EVENT_RESET, NULL);
-+         break;
-+      case IGM_RETROARCH:
-+         command_event(CMD_EVENT_MENU_TOGGLE, NULL);
-+         break;
-+      case IGM_EXIT:
-+         command_event(CMD_EVENT_QUIT, NULL);
-+         break;
++      igm.shot_frames = IGM_SHOT_FRAMES;
++      return;
 +   }
++
++   /* Unpause for every action, RA menu included, so the target starts from a
++    * clean state. */
++   if (!igm.was_paused)
++      command_event(CMD_EVENT_UNPAUSE, NULL);
++
++   spruce_igm_item_run(id);
 +}
 +
 +/* ── Input handling (called every frame while active) ──────── */
@@ -483,6 +481,7 @@ index 0000000..0000000
 +{
 +   uint16_t cur  = igm_read_buttons();
 +   uint16_t prev = igm.prev_buttons;
++   int      id;
 +   igm.prev_buttons = cur;
 +
 +   /* Wait for A/B release before executing a close action.
@@ -498,54 +497,55 @@ index 0000000..0000000
 +      return;
 +   }
 +
-+   /* D-pad up */
 +   if (IGM_PRESSED(cur, prev, RETRO_DEVICE_ID_JOYPAD_UP))
 +   {
 +      igm.selected--;
 +      if (igm.selected < 0)
-+         igm.selected = IGM_ITEM_COUNT - 1;
++         igm.selected = igm.row_count - 1;
 +   }
 +
-+   /* D-pad down */
 +   if (IGM_PRESSED(cur, prev, RETRO_DEVICE_ID_JOYPAD_DOWN))
 +   {
 +      igm.selected++;
-+      if (igm.selected >= IGM_ITEM_COUNT)
++      if (igm.selected >= igm.row_count)
 +         igm.selected = 0;
 +   }
 +
-+   /* D-pad left / right — change state slot (on save/load rows) */
-+   if (igm.selected == IGM_SAVE_STATE || igm.selected == IGM_LOAD_STATE)
++   id = igm.rows[igm.selected];
++
++   if (spruce_igm_item_has_arrows(id))
 +   {
 +      if (IGM_PRESSED(cur, prev, RETRO_DEVICE_ID_JOYPAD_LEFT))
-+         command_event(CMD_EVENT_SAVE_STATE_DECREMENT, NULL);
++         spruce_igm_item_step(id, -1);
 +      if (IGM_PRESSED(cur, prev, RETRO_DEVICE_ID_JOYPAD_RIGHT))
-+         command_event(CMD_EVENT_SAVE_STATE_INCREMENT, NULL);
++         spruce_igm_item_step(id, 1);
 +   }
 +
-+   /* B button — close (resume), deferred until released */
++   /* B always resumes, whatever the list holds */
 +   if (IGM_PRESSED(cur, prev, RETRO_DEVICE_ID_JOYPAD_B))
 +   {
-+      igm.deferred_close = IGM_RESUME;
++      igm.deferred_close = IGM_ID_RESUME;
 +      return;
 +   }
 +
-+   /* A button — activate selected item */
 +   if (IGM_PRESSED(cur, prev, RETRO_DEVICE_ID_JOYPAD_A))
 +   {
-+      switch (igm.selected)
++      switch (spruce_igm_item_press(id))
 +      {
-+         case IGM_SAVE_STATE:
++         case IGM_PRESS_SAVE:
 +            /* Save is safe from render context — stays in IGM */
 +            command_event(CMD_EVENT_SAVE_STATE, NULL);
 +            /* Force preview reload so it picks up the new screenshot */
 +            igm.preview_slot = IGM_PREVIEW_NO_SLOT;
 +            break;
-+         default:
-+            /* All other actions wait for button release, then
-+             * get picked up by process_pending next frame. */
-+            igm.deferred_close = igm.selected;
++         case IGM_PRESS_STAY:
++            igm.pending_stay = id;
++            break;
++         case IGM_PRESS_CLOSE:
++            igm.deferred_close = id;
 +            return;
++         case IGM_PRESS_NONE:
++            break;
 +      }
 +   }
 +}
@@ -559,8 +559,7 @@ index 0000000..0000000
 +      unsigned video_height)
 +{
 +   int i;
-+   char slot_buf[64];
-+   settings_t *settings;
++   char label[64];
 +   const spruce_igm_theme_t *t;
 +   float c_dim[16], c_panel[16], c_sel[16], c_accent[16], c_line[16];
 +   uint32_t col_text, col_sel, col_title, col_shadow, col_batt;
@@ -627,15 +626,20 @@ index 0000000..0000000
 +   if (t->show_preview)
 +      igm_update_preview();
 +
-+   settings = config_get_ptr();
-+
 +   /* ── Layout, from the theme ───────────────────── */
 +   double s       = IGM_LAYOUT_SCALE * t->scale;
 +   int margin     = IGM_PCT(video_width,  t->margin_pct)  * s;
 +   int panel_w    = IGM_PCT(video_width,  t->panel_w_pct) * s;
 +   int item_h     = IGM_PCT(video_height, t->item_h_pct)  * s;
 +   int title_h    = IGM_PCT(video_height, t->title_h_pct) * s;
-+   int panel_h    = item_h * IGM_ITEM_COUNT + title_h;
++   /* Long lists scroll: show as many rows as fit below the panel's top */
++   int avail_h    = t->panel_y_auto
++                    ? (int)video_height - 2 * margin
++                    : (int)video_height - IGM_PCT(video_height, t->panel_y_pct);
++   int shown      = item_h > 0 ? (avail_h - title_h) / item_h : igm.row_count;
++   if (shown > igm.row_count) shown = igm.row_count;
++   if (shown < 1)             shown = 1;
++   int panel_h    = item_h * shown + title_h;
 +   /* Sizes above are scaled by s; these positions deliberately are not. "Put
 +    * the panel at 40% of the screen" means that on every device - scaling it
 +    * would move the panel rather than enlarge it. The consequence is that an
@@ -651,6 +655,9 @@ index 0000000..0000000
 +   int arrow_in   = IGM_PCT(panel_w, t->arrow_inset_pct);
 +   int accent_w   = IGM_PCT(panel_w, t->accent_w_pct);
 +   if (accent_w < 2) accent_w = 2;
++
++   igm.top = spruce_igm_items_scroll(igm.selected, igm.row_count, shown,
++         igm.top);
 +
 +   /* Nothing above is range-checked. A theme that asks for a panel taller than
 +    * the screen gets one - themes are trusted, by design. */
@@ -707,10 +714,13 @@ index 0000000..0000000
 +            c_line, NULL);
 +
 +   /* ── Menu items ────────────────────────────────────── */
-+   for (i = 0; i < IGM_ITEM_COUNT; i++)
++   for (i = 0; i < shown; i++)
 +   {
-+      int iy        = panel_y + title_h + i * item_h;
-+      bool selected = (i == igm.selected);
++      int  row      = igm.top + i;
++      int  id       = igm.rows[row];
++      int  iy       = panel_y + title_h + i * item_h;
++      bool selected = (row == igm.selected);
++      uint32_t text_col = selected ? col_sel : col_text;
 +
 +      /* Selection: row fill, plus the left accent bar if the theme wants it */
 +      if (selected)
@@ -728,54 +738,49 @@ index 0000000..0000000
 +                  c_accent, NULL);
 +      }
 +
-+      /* Label text (save/load rows include slot number) */
-+      {
-+         uint32_t text_col;
-+         const char *label;
++      spruce_igm_item_label(id, t, label, sizeof(label));
++      igm_draw_text(igm.font, label,
++            (float)text_cx,
++            (float)(iy + item_h * t->text_baseline),
++            video_width, video_height,
++            text_col, TEXT_ALIGN_CENTER,
++            t->shadow, (float)t->shadow_offset_px, col_shadow);
 +
-+         if (i == IGM_SAVE_STATE || i == IGM_LOAD_STATE)
-+         {
-+            int slot = settings->ints.state_slot;
-+            if (slot < 0)
-+               snprintf(slot_buf, sizeof(slot_buf), "%s %s",
-+                     t->labels[i], t->auto_label);
-+            else
-+               snprintf(slot_buf, sizeof(slot_buf), "%s %s %d",
-+                     t->labels[i], t->slot_label, slot);
-+            label = slot_buf;
-+         }
-+         else
-+            label = t->labels[i];
-+
-+         text_col = selected ? col_sel : col_text;
-+
-+         igm_draw_text(igm.font, label,
-+               (float)text_cx,
-+               (float)(iy + item_h * t->text_baseline),
-+               video_width, video_height,
-+               text_col, TEXT_ALIGN_CENTER,
-+               t->shadow, (float)t->shadow_offset_px, col_shadow);
-+      }
-+
-+      /* Arrows for Save/Load rows */
-+      if (i == IGM_SAVE_STATE || i == IGM_LOAD_STATE)
++      if (spruce_igm_item_has_arrows(id))
 +      {
 +         igm_draw_text(igm.font, t->arrow_left,
 +               (float)(panel_x + arrow_in),
 +               (float)(iy + item_h * t->text_baseline),
 +               video_width, video_height,
-+               selected ? col_sel : col_text,
-+               TEXT_ALIGN_CENTER,
++               text_col, TEXT_ALIGN_CENTER,
 +               t->shadow, (float)t->shadow_offset_px, col_shadow);
 +
 +         igm_draw_text(igm.font, t->arrow_right,
 +               (float)(panel_x + panel_w - arrow_in),
 +               (float)(iy + item_h * t->text_baseline),
 +               video_width, video_height,
-+               selected ? col_sel : col_text,
-+               TEXT_ALIGN_CENTER,
++               text_col, TEXT_ALIGN_CENTER,
 +               t->shadow, (float)t->shadow_offset_px, col_shadow);
 +      }
++   }
++
++   /* Scrollbar on the panel's right edge when rows are hidden */
++   if (shown < igm.row_count)
++   {
++      int track_y = panel_y + title_h;
++      int track_h = item_h * shown;
++      gfx_display_draw_quad(p_disp, userdata,
++            video_width, video_height,
++            panel_x + panel_w - accent_w, track_y, accent_w, track_h,
++            video_width, video_height,
++            c_line, NULL);
++      gfx_display_draw_quad(p_disp, userdata,
++            video_width, video_height,
++            panel_x + panel_w - accent_w,
++            track_y + track_h * igm.top / igm.row_count,
++            accent_w, track_h * shown / igm.row_count,
++            video_width, video_height,
++            c_accent, NULL);
 +   }
 +
 +   /* ── Save state preview (right of panel) ─────────── */

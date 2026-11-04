@@ -26,7 +26,7 @@ done
 
 # Stage the shared IGM sources on top of the patched tree
 cp -r /common_src/* .
-for f in spruce_igm_platform.h spruce_igm_theme.h spruce_igm_theme.c; do
+for f in spruce_igm_platform.h spruce_igm_theme.h spruce_igm_theme.c spruce_igm_items.h spruce_igm_items.c; do
     [ -f "$f" ] || { echo "FATAL: $f missing - common_src/ was not staged" >&2; exit 1; }
 done
 

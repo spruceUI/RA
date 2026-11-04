@@ -27,28 +27,13 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-/* ── Menu item definitions ─────────────────────────────────── */
-
-enum spruce_igm_sw_item
-{
-   IGM_RESUME = 0,
-   IGM_SAVE_STATE,
-   IGM_LOAD_STATE,
-   IGM_RESET,
-   IGM_RETROARCH,
-   IGM_EXIT,
-   IGM_ITEM_COUNT
-};
-
 /* Colours come from the theme, as ARGB8888 for this blitter. The shadow
  * colour is not used here - this renderer has no shadow pass at all. */
-
-typedef char igm_sw_item_count_matches[
-   (IGM_ITEM_COUNT == SPRUCE_IGM_ITEM_COUNT) ? 1 : -1];
 
 #define IGM_PCT(total, pct)  ((int)((total) * (pct) / 100.0f))
 
 #define IGM_NO_PENDING   -1
+#define IGM_SHOT_FRAMES  2
 #define IGM_FLAG_PATH    "/mnt/SDCARD/RetroArch/IGM.txt"
 
 /* ── State ─────────────────────────────────────────────────── */
@@ -58,9 +43,14 @@ static struct
    bool        active;
    bool        was_paused;
    bool        needs_bg_capture;
+   int         rows[IGM_ID_COUNT];
+   int         row_count;
    int         selected;
+   int         top;
    int         pending_action;
+   int         pending_stay;
    int         deferred_close;
+   int         shot_frames;
    const spruce_igm_theme_t *theme;
    uint16_t    prev_buttons;
    uint32_t   *bg_capture;
@@ -348,19 +338,29 @@ bool spruce_igm_sw_is_enabled(void)
 
 /* ── Toggle ────────────────────────────────────────────────── */
 
+static void igm_close(void)
+{
+   igm.active         = false;
+   igm.pending_action = IGM_NO_PENDING;
+   igm.pending_stay   = IGM_NO_PENDING;
+
+   if (igm.bg_capture)
+   {
+      free(igm.bg_capture);
+      igm.bg_capture = NULL;
+   }
+   igm_unload_preview();
+   spruce_igm_items_close();
+}
+
 void spruce_igm_sw_toggle(void)
 {
+   if (igm.shot_frames > 0)
+      return;
+
    if (igm.active)
    {
-      igm.active         = false;
-      igm.pending_action = IGM_NO_PENDING;
-
-      if (igm.bg_capture)
-      {
-         free(igm.bg_capture);
-         igm.bg_capture = NULL;
-      }
-      igm_unload_preview();
+      igm_close();
 
       if (!igm.was_paused)
          command_event(CMD_EVENT_UNPAUSE, NULL);
@@ -372,10 +372,13 @@ void spruce_igm_sw_toggle(void)
       runloop_state_t *runloop_st = runloop_state_get_ptr();
       /* Runloop context - safe to touch the card here. Self-latching. */
       igm.theme            = spruce_igm_theme_get();
+      igm.row_count        = spruce_igm_items_open(igm.rows, IGM_ID_COUNT);
       igm.was_paused       = (runloop_st->flags & RUNLOOP_FLAG_PAUSED) != 0;
       igm.active           = true;
       igm.selected         = 0;
+      igm.top              = 0;
       igm.pending_action   = IGM_NO_PENDING;
+      igm.pending_stay     = IGM_NO_PENDING;
       igm.deferred_close   = IGM_NO_PENDING;
       igm.prev_buttons     = 0xFFFF;
       igm.needs_bg_capture = true;
@@ -397,54 +400,63 @@ bool spruce_igm_sw_is_active(void)
 
 void spruce_igm_sw_process_pending(void)
 {
-   int action;
+   int id;
+
+   /* Stay paused until a frame has gone out without the menu */
+   if (igm.shot_frames > 0)
+   {
+      if (--igm.shot_frames == 0)
+      {
+         spruce_igm_item_run(IGM_ID_SCREENSHOT);
+         if (!igm.was_paused)
+            command_event(CMD_EVENT_UNPAUSE, NULL);
+      }
+      return;
+   }
+
+   if (igm.pending_stay != IGM_NO_PENDING)
+   {
+      id               = igm.pending_stay;
+      igm.pending_stay = IGM_NO_PENDING;
+      spruce_igm_item_run(id);
+      return;
+   }
 
    if (igm.pending_action == IGM_NO_PENDING)
       return;
 
-   action             = igm.pending_action;
-   igm.pending_action = IGM_NO_PENDING;
-   igm.active         = false;
+   id = igm.pending_action;
+   igm_close();
 
-   if (igm.bg_capture)
+   menu_state_get_ptr()->input_driver_flushing_input = 2;
+
+   if (id == IGM_ID_SCREENSHOT)
    {
-      free(igm.bg_capture);
-      igm.bg_capture = NULL;
+      igm.shot_frames = IGM_SHOT_FRAMES;
+      return;
    }
-   igm_unload_preview();
 
    if (!igm.was_paused)
       command_event(CMD_EVENT_UNPAUSE, NULL);
 
-   menu_state_get_ptr()->input_driver_flushing_input = 2;
-
-   switch (action)
-   {
-      case IGM_RESUME:
-         break;
-      case IGM_LOAD_STATE:
-         command_event(CMD_EVENT_LOAD_STATE, NULL);
-         runloop_state_get_ptr()->run_frames_and_pause = 0;
-         break;
-      case IGM_RESET:
-         command_event(CMD_EVENT_RESET, NULL);
-         break;
-      case IGM_RETROARCH:
-         command_event(CMD_EVENT_MENU_TOGGLE, NULL);
-         break;
-      case IGM_EXIT:
-         command_event(CMD_EVENT_QUIT, NULL);
-         break;
-   }
+   spruce_igm_item_run(id);
 }
 
 /* ── Input handling ────────────────────────────────────────── */
+
+static bool igm_blank(uint32_t *draw_buf, unsigned width, unsigned height)
+{
+   for (unsigned px = 0; px < width * height; px++)
+      draw_buf[px] = 0xFF000000u;
+   return false;
+}
 
 static bool igm_handle_input(uint32_t *draw_buf,
       unsigned width, unsigned height)
 {
    uint16_t cur  = igm_read_buttons();
    uint16_t prev = igm.prev_buttons;
+   int      id;
    igm.prev_buttons = cur;
 
    if (igm.deferred_close != IGM_NO_PENDING)
@@ -455,56 +467,56 @@ static bool igm_handle_input(uint32_t *draw_buf,
          igm.pending_action = igm.deferred_close;
          igm.deferred_close = IGM_NO_PENDING;
       }
-      for (unsigned px = 0; px < width * height; px++)
-         draw_buf[px] = 0xFF000000u;
-      return false;
+      return igm_blank(draw_buf, width, height);
    }
 
    if (IGM_PRESSED(cur, prev, RETRO_DEVICE_ID_JOYPAD_UP))
    {
       igm.selected--;
       if (igm.selected < 0)
-         igm.selected = IGM_ITEM_COUNT - 1;
+         igm.selected = igm.row_count - 1;
    }
 
    if (IGM_PRESSED(cur, prev, RETRO_DEVICE_ID_JOYPAD_DOWN))
    {
       igm.selected++;
-      if (igm.selected >= IGM_ITEM_COUNT)
+      if (igm.selected >= igm.row_count)
          igm.selected = 0;
    }
 
-   if (igm.selected == IGM_SAVE_STATE || igm.selected == IGM_LOAD_STATE)
+   id = igm.rows[igm.selected];
+
+   if (spruce_igm_item_has_arrows(id))
    {
       if (IGM_PRESSED(cur, prev, RETRO_DEVICE_ID_JOYPAD_LEFT))
-         command_event(CMD_EVENT_SAVE_STATE_DECREMENT, NULL);
+         spruce_igm_item_step(id, -1);
       if (IGM_PRESSED(cur, prev, RETRO_DEVICE_ID_JOYPAD_RIGHT))
-         command_event(CMD_EVENT_SAVE_STATE_INCREMENT, NULL);
+         spruce_igm_item_step(id, 1);
    }
 
    if (IGM_PRESSED(cur, prev, RETRO_DEVICE_ID_JOYPAD_B))
    {
-      igm.deferred_close = IGM_RESUME;
-      for (unsigned px = 0; px < width * height; px++)
-         draw_buf[px] = 0xFF000000u;
-      return false;
+      igm.deferred_close = IGM_ID_RESUME;
+      return igm_blank(draw_buf, width, height);
    }
 
    if (IGM_PRESSED(cur, prev, RETRO_DEVICE_ID_JOYPAD_A))
    {
-      switch (igm.selected)
+      switch (spruce_igm_item_press(id))
       {
-         case IGM_SAVE_STATE:
+         case IGM_PRESS_SAVE:
             command_event(CMD_EVENT_SAVE_STATE, NULL);
             igm.preview_slot = IGM_PREVIEW_NO_SLOT;
             break;
-         case IGM_RESUME:
-            igm.deferred_close = igm.selected;
-            for (unsigned px = 0; px < width * height; px++)
-               draw_buf[px] = 0xFF000000u;
-            return false;
-         default:
-            igm.deferred_close = igm.selected;
+         case IGM_PRESS_STAY:
+            igm.pending_stay = id;
+            break;
+         case IGM_PRESS_CLOSE:
+            igm.deferred_close = id;
+            if (id == IGM_ID_RESUME)
+               return igm_blank(draw_buf, width, height);
+            break;
+         case IGM_PRESS_NONE:
             break;
       }
    }
@@ -519,8 +531,7 @@ void spruce_igm_sw_frame(uint32_t *draw_buf, const uint32_t *front_buf,
       unsigned pitch, bitmapfont_lut_t *font)
 {
    int i;
-   char slot_buf[64];
-   settings_t *settings;
+   char label[64];
    const spruce_igm_theme_t *t;
 
    if (!igm.active)
@@ -549,8 +560,6 @@ void spruce_igm_sw_frame(uint32_t *draw_buf, const uint32_t *front_buf,
    if (t->show_preview)
       igm_update_preview();
 
-   settings = config_get_ptr();
-
    /* ── Layout constants ────────────────────────────── */
    double s     = t->scale;
    int gs       = (int)(2.0f * t->scale);
@@ -558,7 +567,12 @@ void spruce_igm_sw_frame(uint32_t *draw_buf, const uint32_t *front_buf,
    int panel_w  = IGM_PCT(width,  t->panel_w_pct) * s;
    int item_h   = IGM_PCT(height, t->item_h_pct)  * s;
    int title_h  = IGM_PCT(height, t->title_h_pct) * s;
-   int panel_h  = item_h * IGM_ITEM_COUNT + title_h;
+   int avail_h  = t->panel_y_auto ? (int)height - 2 * margin
+                  : (int)height - IGM_PCT(height, t->panel_y_pct);
+   int shown    = item_h > 0 ? (avail_h - title_h) / item_h : igm.row_count;
+   if (shown > igm.row_count) shown = igm.row_count;
+   if (shown < 1)             shown = 1;
+   int panel_h  = item_h * shown + title_h;
    /* Sizes are scaled by s; explicit positions deliberately are not - see the
     * GPU copy for why. */
    int panel_x  = t->panel_x_auto ? margin : IGM_PCT(width, t->panel_x_pct);
@@ -578,6 +592,9 @@ void spruce_igm_sw_frame(uint32_t *draw_buf, const uint32_t *front_buf,
    if (gs < 1) gs = 1;
    glyph_h = FONT_HEIGHT * gs;
    if (accent_w < 2) accent_w = 2;
+
+   igm.top = spruce_igm_items_scroll(igm.selected, igm.row_count, shown,
+         igm.top);
 
    /* ── Draw dimmed background ──────────────────────── */
    if (igm.bg_capture)
@@ -645,12 +662,13 @@ void spruce_igm_sw_frame(uint32_t *draw_buf, const uint32_t *front_buf,
    }
 
    /* ── Menu items ──────────────────────────────────── */
-   for (i = 0; i < IGM_ITEM_COUNT; i++)
+   for (i = 0; i < shown; i++)
    {
-      int iy        = panel_y + title_h + i * item_h;
-      bool selected = (i == igm.selected);
-      const char *label;
-      uint32_t text_col;
+      int  row      = igm.top + i;
+      int  id       = igm.rows[row];
+      int  iy       = panel_y + title_h + i * item_h;
+      bool selected = (row == igm.selected);
+      uint32_t text_col = selected ? col_sel : col_text;
       int tw, tx, ty;
 
       /* Selection: row fill, plus the accent bar if the theme wants it */
@@ -667,22 +685,7 @@ void spruce_igm_sw_frame(uint32_t *draw_buf, const uint32_t *front_buf,
                   spruce_igm_theme_color_argb(t, IGM_COL_ACCENT));
       }
 
-      /* Label text */
-      if (i == IGM_SAVE_STATE || i == IGM_LOAD_STATE)
-      {
-         int slot = settings->ints.state_slot;
-         if (slot < 0)
-            snprintf(slot_buf, sizeof(slot_buf), "%s %s",
-                  t->labels[i], t->auto_label);
-         else
-            snprintf(slot_buf, sizeof(slot_buf), "%s %s %d",
-                  t->labels[i], t->slot_label, slot);
-         label = slot_buf;
-      }
-      else
-         label = t->labels[i];
-
-      text_col = selected ? col_sel : col_text;
+      spruce_igm_item_label(id, t, label, sizeof(label));
       tw = text_width(label, gs);
       tx = text_cx - tw / 2;
       ty = iy + (item_h - glyph_h) / 2;
@@ -690,18 +693,33 @@ void spruce_igm_sw_frame(uint32_t *draw_buf, const uint32_t *front_buf,
       draw_text(draw_buf, pitch, width, height,
             tx, ty, label, text_col, font, gs);
 
-      /* Arrows for Save/Load rows */
-      if (i == IGM_SAVE_STATE || i == IGM_LOAD_STATE)
+      if (spruce_igm_item_has_arrows(id))
       {
-         int arrow_y = iy + (item_h - glyph_h) / 2;
          draw_text(draw_buf, pitch, width, height,
-               panel_x + arrow_in, arrow_y, t->arrow_left,
-               selected ? col_sel : col_text, font, gs);
+               panel_x + arrow_in, ty, t->arrow_left,
+               text_col, font, gs);
          draw_text(draw_buf, pitch, width, height,
                panel_x + panel_w - arrow_in - text_width(t->arrow_right, gs),
-               arrow_y, t->arrow_right,
-               selected ? col_sel : col_text, font, gs);
+               ty, t->arrow_right,
+               text_col, font, gs);
       }
+   }
+
+   /* Scrollbar on the panel's right edge when rows are hidden */
+   if (shown < igm.row_count)
+   {
+      int track_y = panel_y + title_h;
+      int track_h = item_h * shown;
+      fill_rect_blend(draw_buf, pitch,
+            panel_x + panel_w - accent_w, track_y, accent_w, track_h,
+            width, height,
+            spruce_igm_theme_color_argb(t, IGM_COL_TITLE_LINE));
+      fill_rect_blend(draw_buf, pitch,
+            panel_x + panel_w - accent_w,
+            track_y + track_h * igm.top / igm.row_count,
+            accent_w, track_h * shown / igm.row_count,
+            width, height,
+            spruce_igm_theme_color_argb(t, IGM_COL_ACCENT));
    }
 
    /* ── Save state preview (right of panel) ───────────── */
