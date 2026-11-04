@@ -153,6 +153,29 @@ static bool igm_list_on_string(void *data, const char *s, size_t len)
    return true;
 }
 
+/* Resume always first and Exit always last, wherever the file put them */
+static void igm_list_pin_ends(int *list, int count)
+{
+   int i, n = 0, out[IGM_ID_COUNT];
+   bool resume = false, quit = false;
+
+   for (i = 0; i < count; i++)
+   {
+      if (list[i] == IGM_ID_RESUME)
+         resume = true;
+      else if (list[i] == IGM_ID_EXIT)
+         quit = true;
+   }
+   if (resume)
+      out[n++] = IGM_ID_RESUME;
+   for (i = 0; i < count; i++)
+      if (list[i] != IGM_ID_RESUME && list[i] != IGM_ID_EXIT)
+         out[n++] = list[i];
+   if (quit)
+      out[n++] = IGM_ID_EXIT;
+   memcpy(list, out, sizeof(int) * n);
+}
+
 static void igm_list_set_default(void)
 {
    memcpy(s_list, igm_default_list, sizeof(igm_default_list));
@@ -208,6 +231,7 @@ static void igm_list_load(void)
             path);
    else
    {
+      igm_list_pin_ends(ctx.list, ctx.count);
       memcpy(s_list, ctx.list, sizeof(s_list));
       s_list_count = ctx.count;
       RARCH_LOG("[IGM items] Loaded \"%s\" (%d items).\n", path, ctx.count);
