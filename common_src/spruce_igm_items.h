@@ -46,7 +46,8 @@ int  spruce_igm_items_open(int *rows, int max);
 void spruce_igm_items_close(void);
 
 bool spruce_igm_item_has_arrows(int id);
-void spruce_igm_item_step(int id, int dir);
+/* True when the step must be queued for spruce_igm_item_run instead. */
+bool spruce_igm_item_step(int id, int dir);
 enum spruce_igm_press spruce_igm_item_press(int id);
 void spruce_igm_item_run(int id);
 void spruce_igm_item_label(int id, const struct spruce_igm_theme *t,

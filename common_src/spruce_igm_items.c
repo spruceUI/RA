@@ -360,15 +360,22 @@ static int igm_ff_step_of(float ratio)
 bool spruce_igm_item_has_arrows(int id)
 {
    return id == IGM_ID_SAVE || id == IGM_ID_LOAD
-       || id == IGM_ID_FF_SPEED || id == IGM_ID_DISC;
+       || id == IGM_ID_FF_SPEED || id == IGM_ID_DISC
+       || id == IGM_ID_SHOW_FPS || id == IGM_ID_MUTE
+       || id == IGM_ID_REWIND || id == IGM_ID_SHADER;
 }
 
-void spruce_igm_item_step(int id, int dir)
+bool spruce_igm_item_step(int id, int dir)
 {
    settings_t *settings = config_get_ptr();
 
    switch (id)
    {
+      case IGM_ID_SHOW_FPS:
+      case IGM_ID_MUTE:
+      case IGM_ID_REWIND:
+      case IGM_ID_SHADER:
+         return true;
       case IGM_ID_SAVE:
       case IGM_ID_LOAD:
          command_event(dir < 0 ? CMD_EVENT_SAVE_STATE_DECREMENT
@@ -396,6 +403,7 @@ void spruce_igm_item_step(int id, int dir)
          }
          break;
    }
+   return false;
 }
 
 enum spruce_igm_press spruce_igm_item_press(int id)
@@ -403,14 +411,14 @@ enum spruce_igm_press spruce_igm_item_press(int id)
    switch (id)
    {
       case IGM_ID_FF_SPEED:
-         return IGM_PRESS_NONE;
-      case IGM_ID_SAVE:
-         return IGM_PRESS_SAVE;
-      case IGM_ID_UNDO_SAVE:
       case IGM_ID_SHOW_FPS:
       case IGM_ID_MUTE:
       case IGM_ID_REWIND:
       case IGM_ID_SHADER:
+         return IGM_PRESS_NONE;
+      case IGM_ID_SAVE:
+         return IGM_PRESS_SAVE;
+      case IGM_ID_UNDO_SAVE:
          return IGM_PRESS_STAY;
       default:
          return IGM_PRESS_CLOSE;

@@ -157,7 +157,7 @@ new file mode 100644
 index 0000000..0000000
 --- /dev/null
 +++ b/spruce_igm.c
-@@ -0,0 +1,692 @@
+@@ -0,0 +1,694 @@
 +/*
 + * Spruce IGM - Simple in-game menu for spruceOS handhelds
 + *
@@ -542,9 +542,11 @@ index 0000000..0000000
 +   if (spruce_igm_item_has_arrows(id))
 +   {
 +      if (IGM_PRESSED(cur, prev, RETRO_DEVICE_ID_JOYPAD_LEFT))
-+         spruce_igm_item_step(id, -1);
++         if (spruce_igm_item_step(id, -1))
++            igm.pending_stay = id;
 +      if (IGM_PRESSED(cur, prev, RETRO_DEVICE_ID_JOYPAD_RIGHT))
-+         spruce_igm_item_step(id, 1);
++         if (spruce_igm_item_step(id, 1))
++            igm.pending_stay = id;
 +   }
 +
 +   /* B always resumes, whatever the list holds */

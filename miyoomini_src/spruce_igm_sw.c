@@ -489,9 +489,11 @@ static bool igm_handle_input(uint32_t *draw_buf,
    if (spruce_igm_item_has_arrows(id))
    {
       if (IGM_PRESSED(cur, prev, RETRO_DEVICE_ID_JOYPAD_LEFT))
-         spruce_igm_item_step(id, -1);
+         if (spruce_igm_item_step(id, -1))
+            igm.pending_stay = id;
       if (IGM_PRESSED(cur, prev, RETRO_DEVICE_ID_JOYPAD_RIGHT))
-         spruce_igm_item_step(id, 1);
+         if (spruce_igm_item_step(id, 1))
+            igm.pending_stay = id;
    }
 
    if (IGM_PRESSED(cur, prev, RETRO_DEVICE_ID_JOYPAD_B))
