@@ -1,0 +1,62 @@
+diff --git a/input/drivers/sdl_input.c b/input/drivers/sdl_input.c
+index a65a948..6499b08 100644
+--- a/input/drivers/sdl_input.c
++++ b/input/drivers/sdl_input.c
+@@ -430,6 +430,46 @@ static void sdl2_grab_mouse(void *data, bool state)
+ }
+ #endif
+ 
++#ifdef HAVE_SDL2
++/* SDL makes mouse events from touches only for an SDL window, and there is none
++ * when EGL drives the display. The last touch holds until a real mouse moves. */
++static bool sdl_touch_seen;
++static int  sdl_touch_x;
++static int  sdl_touch_y;
++
++static void sdl_poll_touch(sdl_input_t *sdl)
++{
++   SDL_Finger *finger = NULL;
++
++   if (sdl->mouse_l || sdl->mouse_x || sdl->mouse_y)
++   {
++      sdl_touch_seen = false;
++      return;
++   }
++
++   if (SDL_GetNumTouchDevices() > 0)
++      finger = SDL_GetTouchFinger(SDL_GetTouchDevice(0), 0);
++
++   if (finger)
++   {
++      unsigned width  = 0;
++      unsigned height = 0;
++
++      video_driver_get_size(&width, &height);
++      sdl_touch_x    = (int)(finger->x * width);
++      sdl_touch_y    = (int)(finger->y * height);
++      sdl_touch_seen = true;
++      sdl->mouse_l   = 1;
++   }
++
++   if (sdl_touch_seen)
++   {
++      sdl->mouse_abs_x = sdl_touch_x;
++      sdl->mouse_abs_y = sdl_touch_y;
++   }
++}
++#endif
++
+ static void sdl_poll_mouse(sdl_input_t *sdl)
+ {
+    Uint8 btn     = SDL_GetRelativeMouseState(&sdl->mouse_x, &sdl->mouse_y);
+@@ -441,7 +481,9 @@ static void sdl_poll_mouse(sdl_input_t *sdl)
+    sdl->mouse_m  = (SDL_BUTTON(SDL_BUTTON_MIDDLE)    & btn) ? 1 : 0;
+    sdl->mouse_b4 = (SDL_BUTTON(SDL_BUTTON_X1)        & btn) ? 1 : 0;
+    sdl->mouse_b5 = (SDL_BUTTON(SDL_BUTTON_X2)        & btn) ? 1 : 0;
+-#ifndef HAVE_SDL2
++#ifdef HAVE_SDL2
++   sdl_poll_touch(sdl);
++#else
+    sdl->mouse_wu = (SDL_BUTTON(SDL_BUTTON_WHEELUP)   & btn) ? 1 : 0;
+    sdl->mouse_wd = (SDL_BUTTON(SDL_BUTTON_WHEELDOWN) & btn) ? 1 : 0;
+ #endif
