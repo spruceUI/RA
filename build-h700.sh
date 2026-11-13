@@ -69,8 +69,9 @@ export LDFLAGS="$LDFLAGS $H700_ARCH -Wl,--gc-sections -flto=auto"
 # --disable-kms: BaseOS harvests no libdrm/libgbm (manifest/harvest.list), so
 #   there is nothing for KMS to bind to. This is where MustardOS's h700 recipe
 #   diverges from ours - it builds --enable-kms against its own buildroot.
-# --disable-vulkan: the H700's Mali-G31 fbdev blob exposes no Vulkan driver.
-#   The universal binary carries it for the Smart Pro S; here it is dead weight.
+# --enable-vulkan: the Mali blob has no Vulkan, but BaseOS-spruce ships PanVK
+#   with a VK_KHR_display on fbdev, which RA's khr_display context drives. RA
+#   loads libvulkan at run time, so cards without it keep the GL drivers.
 # --enable-udev: kept. BaseOS runs no udevd so RA's udev drivers enumerate
 #   nothing, but libudev.so.1 IS harvested, so it links clean and costs nothing.
 #   Input comes from the sdl2 driver via the BaseOS platform cfg overlay.
@@ -93,7 +94,7 @@ LDFLAGS="$LDFLAGS" \
     --enable-freetype \
     --enable-builtinzlib \
     --enable-zlib \
-    --disable-vulkan \
+    --enable-vulkan \
     --disable-kms \
     --disable-opengl \
     --disable-opengl1 \

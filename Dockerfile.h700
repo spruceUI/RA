@@ -29,13 +29,13 @@ RUN dpkg --add-architecture arm64 && \
     libgles2-mesa-dev:arm64 \
     libegl1-mesa-dev:arm64 \
     libudev-dev:arm64 \
+    libvulkan-dev:arm64 \
     kmod \
     && rm -rf /var/lib/apt/lists/*
 
-# No libvulkan-dev: this target builds --disable-vulkan (Mali-G31 fbdev blob
-# has no Vulkan driver). The Mesa EGL/GLES headers above are enough for the
-# fbdev_mali context - it declares its own native_window struct rather than
-# needing the vendor's EGL headers, so no Anbernic sysroot is required.
+# The Mesa EGL/GLES headers above are enough for the fbdev_mali context - it
+# declares its own native_window struct rather than needing the vendor's EGL
+# headers, so no Anbernic sysroot is required.
 
 COPY build-h700.sh /build-h700.sh
 RUN chmod +x /build-h700.sh
