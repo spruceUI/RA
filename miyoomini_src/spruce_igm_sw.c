@@ -607,10 +607,16 @@ void spruce_igm_sw_frame(uint32_t *draw_buf, const uint32_t *front_buf,
    int panel_x  = t->panel_x_auto ? margin : IGM_PCT(width, t->panel_x_pct);
    int panel_y  = t->panel_y_auto ? (height - panel_h) / 2
                   : IGM_PCT(height, t->panel_y_pct);
+   /* Cheat names run long: the cheat list takes the full width */
+   if (igm.in_cheats)
+   {
+      panel_w = (int)width - 2 * margin;
+      panel_x = margin;
+   }
    int text_cx  = panel_x + panel_w / 2;
    int sep_in   = IGM_PCT(panel_w, t->separator_inset_pct);
    int sep_w    = panel_w - IGM_PCT(panel_w, t->separator_inset_pct * 2.0f);
-   int arrow_in = IGM_PCT(panel_w, t->arrow_inset_pct);
+   int arrow_in = IGM_PCT(panel_w, igm.in_cheats ? 4.0f : t->arrow_inset_pct);
    int accent_w = IGM_PCT(panel_w, t->accent_w_pct);
    uint32_t col_text  = spruce_igm_theme_color_argb(t, IGM_COL_TEXT);
    uint32_t col_sel   = spruce_igm_theme_color_argb(t, IGM_COL_TEXT_SELECTED);

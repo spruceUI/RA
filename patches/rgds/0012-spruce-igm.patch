@@ -128,10 +128,10 @@ index 679517b..208a181 100644
  #if defined(HAVE_MENU) && defined(HAVE_NETWORKING)
 diff --git a/spruce_igm.c b/spruce_igm.c
 new file mode 100644
-index 0000000..0e2f352
+index 0000000..b7cd972
 --- /dev/null
 +++ b/spruce_igm.c
-@@ -0,0 +1,721 @@
+@@ -0,0 +1,727 @@
 +/*
 + * Spruce IGM - Simple in-game menu for spruceOS handhelds
 + *
@@ -678,10 +678,16 @@ index 0000000..0e2f352
 +                    : IGM_PCT(video_width, t->panel_x_pct);
 +   int panel_y    = t->panel_y_auto ? (video_height - panel_h) / 2
 +                    : IGM_PCT(video_height, t->panel_y_pct);
++   /* Cheat names run long: the cheat list takes the full width */
++   if (igm.in_cheats)
++   {
++      panel_w = (int)video_width - 2 * margin;
++      panel_x = margin;
++   }
 +   int text_cx    = panel_x + panel_w / 2;
 +   int sep_inset  = IGM_PCT(panel_w, t->separator_inset_pct);
 +   int sep_w      = panel_w - IGM_PCT(panel_w, t->separator_inset_pct * 2.0f);
-+   int arrow_in   = IGM_PCT(panel_w, t->arrow_inset_pct);
++   int arrow_in   = IGM_PCT(panel_w, igm.in_cheats ? 4.0f : t->arrow_inset_pct);
 +   int accent_w   = IGM_PCT(panel_w, t->accent_w_pct);
 +   if (accent_w < 2) accent_w = 2;
 +
