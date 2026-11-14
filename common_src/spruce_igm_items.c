@@ -11,6 +11,7 @@
 #include <retro_dirent.h>
 #include <streams/file_stream.h>
 #include <string/stdstring.h>
+#include <features/features_cpu.h>
 
 #include "audio/audio_driver.h"
 #ifdef HAVE_CHEATS
@@ -613,28 +614,75 @@ static bool igm_toggle_state(int id)
    return false;
 }
 
-/* Cheat names run long: cut on a character boundary so ": On" still fits */
-#define IGM_CHEAT_NAME_MAX 24
+/* Cheat names run long: a window of this many characters, so ": On" still fits.
+ * The selected row scrolls the window across the name, pausing at both ends. */
+#define IGM_CHEAT_NAME_MAX  24
+#define IGM_SCROLL_STEP_US  250000
+#define IGM_SCROLL_PAUSE_US 1000000
 
-static void igm_cheat_label(unsigned i, const struct spruce_igm_theme *t,
-      char *buf, size_t len)
+static int          s_scroll_id = -1;
+static retro_time_t s_scroll_start;
+
+static size_t igm_utf8_skip(const char *s, size_t i, size_t chars)
+{
+   while (chars-- > 0 && s[i])
+      do i++; while ((s[i] & 0xC0) == 0x80);
+   return i;
+}
+
+static size_t igm_utf8_len(const char *s)
+{
+   size_t n = 0;
+   for (; *s; s++)
+      if ((*s & 0xC0) != 0x80)
+         n++;
+   return n;
+}
+
+static size_t igm_scroll_chars(int id, size_t overflow)
+{
+   retro_time_t now = cpu_features_get_time_usec();
+   retro_time_t t;
+
+   if (id != s_scroll_id)
+   {
+      s_scroll_id    = id;
+      s_scroll_start = now;
+   }
+   t = (now - s_scroll_start)
+      % (2 * IGM_SCROLL_PAUSE_US + (retro_time_t)overflow * IGM_SCROLL_STEP_US);
+   if (t < IGM_SCROLL_PAUSE_US)
+      return 0;
+   t = (t - IGM_SCROLL_PAUSE_US) / IGM_SCROLL_STEP_US;
+   return (size_t)t < overflow ? (size_t)t : overflow;
+}
+
+static void igm_cheat_label(int id, bool selected,
+      const struct spruce_igm_theme *t, char *buf, size_t len)
 {
 #ifdef HAVE_CHEATS
-   char name[IGM_CHEAT_NAME_MAX + 3];
+   char name[IGM_CHEAT_NAME_MAX * 4 + 3];
+   unsigned i       = (unsigned)(id - IGM_CHEAT_ROW);
    const char *desc = cheat_manager_get_desc(i);
-   size_t n;
+   size_t chars, from, to;
 
    if (string_is_empty(desc))
       snprintf(name, sizeof(name), "#%u", i + 1);
-   else if ((n = strlen(desc)) <= IGM_CHEAT_NAME_MAX)
+   else if ((chars = igm_utf8_len(desc)) <= IGM_CHEAT_NAME_MAX)
       strlcpy(name, desc, sizeof(name));
+   else if (selected)
+   {
+      from = igm_utf8_skip(desc, 0,
+            igm_scroll_chars(id, chars - IGM_CHEAT_NAME_MAX));
+      to   = igm_utf8_skip(desc, from, IGM_CHEAT_NAME_MAX);
+      memcpy(name, desc + from, to - from);
+      name[to - from] = '\0';
+   }
    else
    {
-      n = IGM_CHEAT_NAME_MAX;
-      while (n > 0 && (desc[n] & 0xC0) == 0x80)
-         n--;
-      memcpy(name, desc, n);
-      strlcpy(name + n, "..", sizeof(name) - n);
+      to = igm_utf8_skip(desc, 0, IGM_CHEAT_NAME_MAX);
+      memcpy(name, desc, to);
+      strlcpy(name + to, "..", sizeof(name) - to);
    }
    snprintf(buf, len, "%s: %s", name,
          cheat_manager_get_code_state(i) ? t->on_label : t->off_label);
@@ -643,15 +691,15 @@ static void igm_cheat_label(unsigned i, const struct spruce_igm_theme *t,
 #endif
 }
 
-void spruce_igm_item_label(int id, const struct spruce_igm_theme *t,
-      char *buf, size_t len)
+void spruce_igm_item_label(int id, bool selected,
+      const struct spruce_igm_theme *t, char *buf, size_t len)
 {
    settings_t *settings = config_get_ptr();
    const char *label;
 
    if (id >= IGM_CHEAT_ROW)
    {
-      igm_cheat_label((unsigned)(id - IGM_CHEAT_ROW), t, buf, len);
+      igm_cheat_label(id, selected, t, buf, len);
       return;
    }
    label = t->labels[id];

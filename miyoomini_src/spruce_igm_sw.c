@@ -720,7 +720,7 @@ void spruce_igm_sw_frame(uint32_t *draw_buf, const uint32_t *front_buf,
                   spruce_igm_theme_color_argb(t, IGM_COL_ACCENT));
       }
 
-      spruce_igm_item_label(id, t, label, sizeof(label));
+      spruce_igm_item_label(id, selected, t, label, sizeof(label));
       tw = text_width(label, gs);
       tx = text_cx - tw / 2;
       ty = iy + (item_h - glyph_h) / 2;

@@ -154,7 +154,7 @@ index 679517b..208a181 100644
  #if defined(HAVE_MENU) && defined(HAVE_NETWORKING)
 diff --git a/spruce_igm.c b/spruce_igm.c
 new file mode 100644
-index 0000000..b7cd972
+index 0000000..31b4596
 --- /dev/null
 +++ b/spruce_igm.c
 @@ -0,0 +1,727 @@
@@ -799,7 +799,7 @@ index 0000000..b7cd972
 +                  c_accent, NULL);
 +      }
 +
-+      spruce_igm_item_label(id, t, label, sizeof(label));
++      spruce_igm_item_label(id, selected, t, label, sizeof(label));
 +      igm_draw_text(igm.font, label,
 +            (float)text_cx,
 +            (float)(iy + item_h * t->text_baseline),
