@@ -614,14 +614,21 @@ static bool igm_toggle_state(int id)
    return false;
 }
 
-/* Cheat names run long: a window of this many characters, so ": On" still fits.
- * The selected row scrolls the window across the name, pausing at both ends. */
-#define IGM_CHEAT_NAME_MAX  24
+/* Cheat names run long: they get a window as wide as the row allows. The
+ * selected row scrolls the window across the name, pausing at both ends. */
+#define IGM_CHEAT_NAME_MIN  8
+#define IGM_CHEAT_NAME_MAX  96
 #define IGM_SCROLL_STEP_US  250000
 #define IGM_SCROLL_PAUSE_US 1000000
 
+static int          s_cheat_row_chars = 32;
 static int          s_scroll_id = -1;
 static retro_time_t s_scroll_start;
+
+void spruce_igm_cheats_set_width(int chars)
+{
+   s_cheat_row_chars = chars;
+}
 
 static size_t igm_utf8_skip(const char *s, size_t i, size_t chars)
 {
@@ -664,23 +671,31 @@ static void igm_cheat_label(int id, bool selected,
    char name[IGM_CHEAT_NAME_MAX * 4 + 3];
    unsigned i       = (unsigned)(id - IGM_CHEAT_ROW);
    const char *desc = cheat_manager_get_desc(i);
+   const char *off  = t->off_label;
    size_t chars, from, to;
+   int width        = s_cheat_row_chars - 2 - (int)igm_utf8_len(
+         igm_utf8_len(t->on_label) > igm_utf8_len(off) ? t->on_label : off);
+
+   if (width < IGM_CHEAT_NAME_MIN)
+      width = IGM_CHEAT_NAME_MIN;
+   if (width > IGM_CHEAT_NAME_MAX)
+      width = IGM_CHEAT_NAME_MAX;
 
    if (string_is_empty(desc))
       snprintf(name, sizeof(name), "#%u", i + 1);
-   else if ((chars = igm_utf8_len(desc)) <= IGM_CHEAT_NAME_MAX)
+   else if ((chars = igm_utf8_len(desc)) <= (size_t)width)
       strlcpy(name, desc, sizeof(name));
    else if (selected)
    {
       from = igm_utf8_skip(desc, 0,
-            igm_scroll_chars(id, chars - IGM_CHEAT_NAME_MAX));
-      to   = igm_utf8_skip(desc, from, IGM_CHEAT_NAME_MAX);
+            igm_scroll_chars(id, chars - width));
+      to   = igm_utf8_skip(desc, from, width);
       memcpy(name, desc + from, to - from);
       name[to - from] = '\0';
    }
    else
    {
-      to = igm_utf8_skip(desc, 0, IGM_CHEAT_NAME_MAX);
+      to = igm_utf8_skip(desc, 0, width - 2);
       memcpy(name, desc, to);
       strlcpy(name + to, "..", sizeof(name) - to);
    }

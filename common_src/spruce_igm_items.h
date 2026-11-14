@@ -64,6 +64,9 @@ void spruce_igm_item_run(int id);
 /* A selected row whose text is too long scrolls it, so call once per frame. */
 void spruce_igm_item_label(int id, bool selected,
       const struct spruce_igm_theme *t, char *buf, size_t len);
+/* How many characters fit on a cheat row between the arrows; the name gets
+ * what ": Off" leaves. Set each frame before drawing the cheat list. */
+void spruce_igm_cheats_set_width(int chars);
 
 /* A press of button id (a RETRO_DEVICE_ID_JOYPAD_* bit in cur/prev), then
  * repeats while it stays held. */

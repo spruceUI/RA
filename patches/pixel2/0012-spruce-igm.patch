@@ -128,10 +128,10 @@ index 679517b..208a181 100644
  #if defined(HAVE_MENU) && defined(HAVE_NETWORKING)
 diff --git a/spruce_igm.c b/spruce_igm.c
 new file mode 100644
-index 0000000..d0eea93
+index 0000000..7108164
 --- /dev/null
 +++ b/spruce_igm.c
-@@ -0,0 +1,727 @@
+@@ -0,0 +1,741 @@
 +/*
 + * Spruce IGM - Simple in-game menu for spruceOS handhelds
 + *
@@ -588,7 +588,7 @@ index 0000000..d0eea93
 +      unsigned video_height)
 +{
 +   int i;
-+   char label[64];
++   char label[512];
 +   const spruce_igm_theme_t *t;
 +   float c_dim[16], c_panel[16], c_sel[16], c_accent[16], c_line[16];
 +   uint32_t col_text, col_sel, col_title, col_shadow, col_batt;
@@ -690,6 +690,20 @@ index 0000000..d0eea93
 +   int arrow_in   = IGM_PCT(panel_w, igm.in_cheats ? 4.0f : t->arrow_inset_pct);
 +   int accent_w   = IGM_PCT(panel_w, t->accent_w_pct);
 +   if (accent_w < 2) accent_w = 2;
++   /* Cheat rows: as many characters as fit between the arrows, from the
++    * font's average width with a margin */
++   if (igm.in_cheats)
++   {
++      static const char sample[] =
++            "ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz 0123456789";
++      int sample_w = font_driver_get_message_width(igm.font,
++            sample, sizeof(sample) - 1, 1.0f);
++      int arrow_w  = font_driver_get_message_width(igm.font,
++            t->arrow_right, strlen(t->arrow_right), 1.0f);
++      if (sample_w > 0)
++         spruce_igm_cheats_set_width((panel_w - 2 * arrow_in - 2 * arrow_w)
++               * (int)(sizeof(sample) - 1) * 9 / (sample_w * 10));
++   }
 +
 +   igm.top = spruce_igm_items_scroll(igm.selected, igm.row_count, shown,
 +         igm.top);

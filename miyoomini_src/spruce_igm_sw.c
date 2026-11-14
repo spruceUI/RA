@@ -560,7 +560,7 @@ void spruce_igm_sw_frame(uint32_t *draw_buf, const uint32_t *front_buf,
       unsigned pitch, bitmapfont_lut_t *font)
 {
    int i;
-   char label[64];
+   char label[512];
    const spruce_igm_theme_t *t;
 
    if (!igm.active)
@@ -627,6 +627,10 @@ void spruce_igm_sw_frame(uint32_t *draw_buf, const uint32_t *front_buf,
    if (gs < 1) gs = 1;
    glyph_h = FONT_HEIGHT * gs;
    if (accent_w < 2) accent_w = 2;
+   /* Cheat rows: as many characters as fit between the arrows */
+   if (igm.in_cheats)
+      spruce_igm_cheats_set_width((panel_w - 2 * arrow_in
+            - 2 * text_width(t->arrow_right, gs)) / (FONT_WIDTH_STRIDE * gs));
 
    igm.top = spruce_igm_items_scroll(igm.selected, igm.row_count, shown,
          igm.top);
