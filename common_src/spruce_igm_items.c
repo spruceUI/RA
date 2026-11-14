@@ -8,10 +8,17 @@
 #include <file/config_file.h>
 #include <file/file_path.h>
 #include <formats/rjson.h>
+#include <retro_dirent.h>
 #include <streams/file_stream.h>
 #include <string/stdstring.h>
 
 #include "audio/audio_driver.h"
+#ifdef HAVE_CHEATS
+#include "cheat_manager.h"
+#endif
+#ifdef HAVE_CHEEVOS
+#include "cheevos/cheevos.h"
+#endif
 #include "command.h"
 #include "configuration.h"
 #include "disk_control_interface.h"
@@ -48,6 +55,7 @@ static const struct
    { "mute",       "Mute"           },
    { "rewind",     "Rewind"         },
    { "shader",     "Shader"         },
+   { "cheats",     "Cheats"         },
 };
 
 static const int igm_default_list[] = {
@@ -68,6 +76,7 @@ static struct
 } s_open;
 
 static unsigned s_disc_sel;
+static bool     s_cheats_changed;
 
 const char *spruce_igm_item_key(int id)
 {
@@ -248,6 +257,59 @@ static disk_control_interface_t *igm_disk(void)
    return &runloop_state_get_ptr()->system.disk_control;
 }
 
+#ifdef HAVE_CHEATS
+/* RA loads cheats/<core>/<game>.cht itself when the game starts. The libretro
+ * database names its files cheats/<system>/<game>.cht, so look there too. */
+static bool igm_cheat_find(char *s, size_t len)
+{
+   const char *dir  = config_get_ptr()->paths.path_cheat_database;
+   const char *game = path_basename_nocompression(
+         runloop_state_get_ptr()->name.cheatfile);
+   struct RDIR *rd;
+   bool found = false;
+
+   if (string_is_empty(dir) || string_is_empty(game))
+      return false;
+   fill_pathname_join_special(s, dir, game, len);
+   if (path_is_valid(s))
+      return true;
+   if (!(rd = retro_opendir(dir)))
+      return false;
+   while (!found && retro_readdir(rd))
+   {
+      char sub[PATH_MAX_LENGTH];
+      const char *name = retro_dirent_get_name(rd);
+      if (     !retro_dirent_is_dir(rd, NULL)
+            || string_is_equal(name, ".") || string_is_equal(name, ".."))
+         continue;
+      fill_pathname_join_special(sub, dir, name, sizeof(sub));
+      fill_pathname_join_special(s, sub, game, len);
+      found = path_is_valid(s);
+   }
+   retro_closedir(rd);
+   return found;
+}
+#endif
+
+/* Runloop context. Hidden in hardcore: RA turns hardcore off when a cheat applies. */
+static bool igm_cheats_ready(void)
+{
+#ifdef HAVE_CHEATS
+   char path[PATH_MAX_LENGTH];
+#ifdef HAVE_CHEEVOS
+   if (rcheevos_hardcore_active())
+      return false;
+#endif
+   if (cheat_manager_get_size() > 0)
+      return true;
+   return igm_cheat_find(path, sizeof(path))
+       && cheat_manager_load(path, false)
+       && cheat_manager_get_size() > 0;
+#else
+   return false;
+#endif
+}
+
 static bool igm_item_available(int id)
 {
    switch (id)
@@ -273,6 +335,8 @@ static bool igm_item_available(int id)
 #else
          return false;
 #endif
+      case IGM_ID_CHEATS:
+         return igm_cheats_ready();
       default:
          return true;
    }
@@ -313,6 +377,15 @@ void spruce_igm_items_close(void)
    bool rewind = settings->bools.rewind_enable      != s_open.rewind;
    bool shader = settings->bools.video_shader_enable != s_open.shader;
    config_file_t *conf;
+
+#ifdef HAVE_CHEATS
+   if (s_cheats_changed)
+   {
+      cheat_manager_save_game_specific_cheats(
+            settings->paths.path_cheat_database);
+      s_cheats_changed = false;
+   }
+#endif
 
    if (!(ff || fps || rewind || shader) || string_is_empty(path))
       return;
@@ -357,9 +430,21 @@ static int igm_ff_step_of(float ratio)
    return n;
 }
 
+int spruce_igm_cheats_rows(int *rows, int max)
+{
+   int n = 0;
+#ifdef HAVE_CHEATS
+   unsigned i, size = cheat_manager_get_size();
+   for (i = 0; i < size && n < max; i++)
+      rows[n++] = IGM_CHEAT_ROW + (int)i;
+#endif
+   return n;
+}
+
 bool spruce_igm_item_has_arrows(int id)
 {
-   return id == IGM_ID_SAVE || id == IGM_ID_LOAD
+   return id >= IGM_CHEAT_ROW
+       || id == IGM_ID_SAVE || id == IGM_ID_LOAD
        || id == IGM_ID_FF_SPEED || id == IGM_ID_DISC
        || id == IGM_ID_SHOW_FPS || id == IGM_ID_MUTE
        || id == IGM_ID_REWIND || id == IGM_ID_SHADER;
@@ -368,6 +453,9 @@ bool spruce_igm_item_has_arrows(int id)
 bool spruce_igm_item_step(int id, int dir)
 {
    settings_t *settings = config_get_ptr();
+
+   if (id >= IGM_CHEAT_ROW)
+      return true;
 
    switch (id)
    {
@@ -408,8 +496,13 @@ bool spruce_igm_item_step(int id, int dir)
 
 enum spruce_igm_press spruce_igm_item_press(int id)
 {
+   if (id >= IGM_CHEAT_ROW)
+      return IGM_PRESS_STAY;
+
    switch (id)
    {
+      case IGM_ID_CHEATS:
+         return IGM_PRESS_CHEATS;
       case IGM_ID_FF_SPEED:
       case IGM_ID_SHOW_FPS:
       case IGM_ID_MUTE:
@@ -440,6 +533,20 @@ static void igm_disc_insert(unsigned index)
 void spruce_igm_item_run(int id)
 {
    settings_t *settings = config_get_ptr();
+
+#ifdef HAVE_CHEATS
+   if (id >= IGM_CHEAT_ROW)
+   {
+      if ((unsigned)(id - IGM_CHEAT_ROW) < cheat_manager_get_size())
+      {
+         cheat_manager_toggle_index(true,
+               settings->bools.notification_show_cheats_applied,
+               (unsigned)(id - IGM_CHEAT_ROW));
+         s_cheats_changed = true;
+      }
+      return;
+   }
+#endif
 
    switch (id)
    {
@@ -506,11 +613,48 @@ static bool igm_toggle_state(int id)
    return false;
 }
 
+/* Cheat names run long: cut on a character boundary so ": On" still fits */
+#define IGM_CHEAT_NAME_MAX 24
+
+static void igm_cheat_label(unsigned i, const struct spruce_igm_theme *t,
+      char *buf, size_t len)
+{
+#ifdef HAVE_CHEATS
+   char name[IGM_CHEAT_NAME_MAX + 3];
+   const char *desc = cheat_manager_get_desc(i);
+   size_t n;
+
+   if (string_is_empty(desc))
+      snprintf(name, sizeof(name), "#%u", i + 1);
+   else if ((n = strlen(desc)) <= IGM_CHEAT_NAME_MAX)
+      strlcpy(name, desc, sizeof(name));
+   else
+   {
+      n = IGM_CHEAT_NAME_MAX;
+      while (n > 0 && (desc[n] & 0xC0) == 0x80)
+         n--;
+      memcpy(name, desc, n);
+      strlcpy(name + n, "..", sizeof(name) - n);
+   }
+   snprintf(buf, len, "%s: %s", name,
+         cheat_manager_get_code_state(i) ? t->on_label : t->off_label);
+#else
+   buf[0] = '\0';
+#endif
+}
+
 void spruce_igm_item_label(int id, const struct spruce_igm_theme *t,
       char *buf, size_t len)
 {
    settings_t *settings = config_get_ptr();
-   const char *label    = t->labels[id];
+   const char *label;
+
+   if (id >= IGM_CHEAT_ROW)
+   {
+      igm_cheat_label((unsigned)(id - IGM_CHEAT_ROW), t, buf, len);
+      return;
+   }
+   label = t->labels[id];
 
    switch (id)
    {

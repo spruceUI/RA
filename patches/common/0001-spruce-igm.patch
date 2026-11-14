@@ -154,10 +154,10 @@ index 679517b..208a181 100644
  #if defined(HAVE_MENU) && defined(HAVE_NETWORKING)
 diff --git a/spruce_igm.c b/spruce_igm.c
 new file mode 100644
-index 0000000..0000000
+index 0000000..0e2f352
 --- /dev/null
 +++ b/spruce_igm.c
-@@ -0,0 +1,694 @@
+@@ -0,0 +1,721 @@
 +/*
 + * Spruce IGM - Simple in-game menu for spruceOS handhelds
 + *
@@ -214,8 +214,12 @@ index 0000000..0000000
 +{
 +   bool        active;
 +   bool        was_paused;       /* pause state before IGM opened  */
-+   int         rows[IGM_ID_COUNT];  /* item id per row */
++   int         rows[IGM_MAX_ROWS];  /* item id per row */
 +   int         row_count;
++   bool        in_cheats;        /* rows hold the cheat list */
++   int         menu_rows[IGM_ID_COUNT];
++   int         menu_count;
++   int         menu_selected;
 +   int         selected;         /* row index */
 +   int         top;              /* first row drawn */
 +   int         pending_action;   /* deferred action, or IGM_NO_PENDING */
@@ -430,6 +434,7 @@ index 0000000..0000000
 +      igm.row_count      = spruce_igm_items_open(igm.rows, IGM_ID_COUNT);
 +      igm.was_paused     = (runloop_st->flags & RUNLOOP_FLAG_PAUSED) != 0;
 +      igm.active         = true;
++      igm.in_cheats      = false;
 +      igm.selected       = 0;
 +      igm.top            = 0;
 +      igm.pending_action = IGM_NO_PENDING;
@@ -549,9 +554,17 @@ index 0000000..0000000
 +            igm.pending_stay = id;
 +   }
 +
-+   /* B always resumes, whatever the list holds */
++   /* B leaves the cheat list, otherwise always resumes */
 +   if (IGM_PRESSED(cur, prev, RETRO_DEVICE_ID_JOYPAD_B))
 +   {
++      if (igm.in_cheats)
++      {
++         memcpy(igm.rows, igm.menu_rows, sizeof(igm.menu_rows));
++         igm.row_count = igm.menu_count;
++         igm.selected  = igm.menu_selected;
++         igm.in_cheats = false;
++         return;
++      }
 +      igm.deferred_close = IGM_ID_RESUME;
 +      return;
 +   }
@@ -572,6 +585,20 @@ index 0000000..0000000
 +         case IGM_PRESS_CLOSE:
 +            igm.deferred_close = id;
 +            return;
++         case IGM_PRESS_CHEATS:
++            memcpy(igm.menu_rows, igm.rows, sizeof(igm.menu_rows));
++            igm.menu_count    = igm.row_count;
++            igm.menu_selected = igm.selected;
++            igm.row_count     = spruce_igm_cheats_rows(igm.rows, IGM_MAX_ROWS);
++            if (igm.row_count == 0)
++            {
++               igm.row_count = igm.menu_count;
++               break;
++            }
++            igm.selected      = 0;
++            igm.top           = 0;
++            igm.in_cheats     = true;
++            break;
 +         case IGM_PRESS_NONE:
 +            break;
 +      }

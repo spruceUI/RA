@@ -43,8 +43,12 @@ static struct
    bool        active;
    bool        was_paused;
    bool        needs_bg_capture;
-   int         rows[IGM_ID_COUNT];
+   int         rows[IGM_MAX_ROWS];
    int         row_count;
+   bool        in_cheats;        /* rows hold the cheat list */
+   int         menu_rows[IGM_ID_COUNT];
+   int         menu_count;
+   int         menu_selected;
    int         selected;
    int         top;
    int         pending_action;
@@ -375,6 +379,7 @@ void spruce_igm_sw_toggle(void)
       igm.row_count        = spruce_igm_items_open(igm.rows, IGM_ID_COUNT);
       igm.was_paused       = (runloop_st->flags & RUNLOOP_FLAG_PAUSED) != 0;
       igm.active           = true;
+      igm.in_cheats        = false;
       igm.selected         = 0;
       igm.top              = 0;
       igm.pending_action   = IGM_NO_PENDING;
@@ -498,6 +503,14 @@ static bool igm_handle_input(uint32_t *draw_buf,
 
    if (IGM_PRESSED(cur, prev, RETRO_DEVICE_ID_JOYPAD_B))
    {
+      if (igm.in_cheats)
+      {
+         memcpy(igm.rows, igm.menu_rows, sizeof(igm.menu_rows));
+         igm.row_count = igm.menu_count;
+         igm.selected  = igm.menu_selected;
+         igm.in_cheats = false;
+         return true;
+      }
       igm.deferred_close = IGM_ID_RESUME;
       return igm_blank(draw_buf, width, height);
    }
@@ -517,6 +530,20 @@ static bool igm_handle_input(uint32_t *draw_buf,
             igm.deferred_close = id;
             if (id == IGM_ID_RESUME)
                return igm_blank(draw_buf, width, height);
+            break;
+         case IGM_PRESS_CHEATS:
+            memcpy(igm.menu_rows, igm.rows, sizeof(igm.menu_rows));
+            igm.menu_count    = igm.row_count;
+            igm.menu_selected = igm.selected;
+            igm.row_count     = spruce_igm_cheats_rows(igm.rows, IGM_MAX_ROWS);
+            if (igm.row_count == 0)
+            {
+               igm.row_count = igm.menu_count;
+               break;
+            }
+            igm.selected      = 0;
+            igm.top           = 0;
+            igm.in_cheats     = true;
             break;
          case IGM_PRESS_NONE:
             break;

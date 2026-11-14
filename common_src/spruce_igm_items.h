@@ -23,15 +23,21 @@ enum spruce_igm_item_id
    IGM_ID_MUTE,
    IGM_ID_REWIND,
    IGM_ID_SHADER,
+   IGM_ID_CHEATS,
    IGM_ID_COUNT
 };
+
+/* Rows from IGM_CHEAT_ROW up are cheat (id - IGM_CHEAT_ROW) of the cheat list. */
+#define IGM_CHEAT_ROW 1000
+#define IGM_MAX_ROWS  256
 
 enum spruce_igm_press
 {
    IGM_PRESS_NONE = 0,
    IGM_PRESS_SAVE,    /* run in place by the caller, menu stays open */
    IGM_PRESS_STAY,    /* queue for spruce_igm_item_run, menu stays open */
-   IGM_PRESS_CLOSE    /* close the menu, then spruce_igm_item_run */
+   IGM_PRESS_CLOSE,   /* close the menu, then spruce_igm_item_run */
+   IGM_PRESS_CHEATS   /* show the cheat list in place of the menu */
 };
 
 struct spruce_igm_theme;
@@ -42,8 +48,12 @@ const char *spruce_igm_item_default_label(int id);
 /* Runloop context. Fills rows with the configured items that apply to the
  * running content and returns how many; never fewer than one. */
 int  spruce_igm_items_open(int *rows, int max);
-/* Runloop context. Writes back only the settings the menu changed. */
+/* Runloop context. Writes back only the settings the menu changed, and saves
+ * the cheats if any were toggled. */
 void spruce_igm_items_close(void);
+/* Any context: spruce_igm_items_open already loaded the cheats. Fills rows with
+ * one row per cheat and returns how many. */
+int  spruce_igm_cheats_rows(int *rows, int max);
 
 bool spruce_igm_item_has_arrows(int id);
 /* True when the step must be queued for spruce_igm_item_run instead. */
