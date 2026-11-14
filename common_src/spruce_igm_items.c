@@ -738,6 +738,40 @@ void spruce_igm_item_label(int id, bool selected,
    strlcpy(buf, label, len);
 }
 
+#define IGM_REPEAT_DELAY_US 400000
+#define IGM_REPEAT_RATE_US  80000
+
+bool spruce_igm_input_repeat(uint16_t cur, uint16_t prev, unsigned id)
+{
+   static retro_time_t next[16];
+   uint16_t bit = (uint16_t)(1 << id);
+   retro_time_t now;
+
+   if (id >= 16)
+      return false;
+   if (!(cur & bit))
+   {
+      next[id] = 0;
+      return false;
+   }
+   now = cpu_features_get_time_usec();
+   /* Held since before the menu opened: wait out the delay first */
+   if ((prev & bit) && next[id] == 0)
+   {
+      next[id] = now + IGM_REPEAT_DELAY_US;
+      return false;
+   }
+   if (!(prev & bit))
+   {
+      next[id] = now + IGM_REPEAT_DELAY_US;
+      return true;
+   }
+   if (now < next[id])
+      return false;
+   next[id] = now + IGM_REPEAT_RATE_US;
+   return true;
+}
+
 int spruce_igm_items_scroll(int selected, int count, int shown, int top)
 {
    if (shown >= count)

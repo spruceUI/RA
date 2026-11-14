@@ -475,14 +475,14 @@ static bool igm_handle_input(uint32_t *draw_buf,
       return igm_blank(draw_buf, width, height);
    }
 
-   if (IGM_PRESSED(cur, prev, RETRO_DEVICE_ID_JOYPAD_UP))
+   if (spruce_igm_input_repeat(cur, prev, RETRO_DEVICE_ID_JOYPAD_UP))
    {
       igm.selected--;
       if (igm.selected < 0)
          igm.selected = igm.row_count - 1;
    }
 
-   if (IGM_PRESSED(cur, prev, RETRO_DEVICE_ID_JOYPAD_DOWN))
+   if (spruce_igm_input_repeat(cur, prev, RETRO_DEVICE_ID_JOYPAD_DOWN))
    {
       igm.selected++;
       if (igm.selected >= igm.row_count)

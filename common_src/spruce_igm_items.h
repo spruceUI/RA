@@ -2,6 +2,7 @@
 #define SPRUCE_IGM_ITEMS_H
 
 #include <stddef.h>
+#include <stdint.h>
 #include <boolean.h>
 
 /* Every entry the menu can show. Which ones appear, and in what order, comes
@@ -63,6 +64,10 @@ void spruce_igm_item_run(int id);
 /* A selected row whose text is too long scrolls it, so call once per frame. */
 void spruce_igm_item_label(int id, bool selected,
       const struct spruce_igm_theme *t, char *buf, size_t len);
+
+/* A press of button id (a RETRO_DEVICE_ID_JOYPAD_* bit in cur/prev), then
+ * repeats while it stays held. */
+bool spruce_igm_input_repeat(uint16_t cur, uint16_t prev, unsigned id);
 
 /* First row to draw so that selected stays inside a window of shown rows. */
 int  spruce_igm_items_scroll(int selected, int count, int shown, int top);
