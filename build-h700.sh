@@ -85,6 +85,8 @@ LDFLAGS="$LDFLAGS" \
     --enable-egl \
     --enable-opengles \
     --enable-opengles3 \
+    --enable-opengles3_1 \
+    --enable-opengles3_2 \
     --enable-sdl2 \
     --enable-udev \
     --enable-alsa \
