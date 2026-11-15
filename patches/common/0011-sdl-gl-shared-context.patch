@@ -1,0 +1,75 @@
+diff --git a/gfx/drivers_context/sdl_gl_ctx.c b/gfx/drivers_context/sdl_gl_ctx.c
+index 1d58fb5..0e9fd19 100644
+--- a/gfx/drivers_context/sdl_gl_ctx.c
++++ b/gfx/drivers_context/sdl_gl_ctx.c
+@@ -42,6 +42,8 @@ typedef struct gfx_ctx_sdl_data
+ #ifdef HAVE_SDL2
+    SDL_Window    *win;
+    SDL_GLContext  ctx;
++   SDL_GLContext  hw_ctx;     /* shared context a core draws in */
++   bool           use_hw_ctx;
+ #else
+    SDL_Surface *win;
+ #endif
+@@ -78,6 +80,10 @@ static void sdl_ctx_destroy_resources(gfx_ctx_sdl_data_t *sdl)
+       return;
+ 
+ #ifdef HAVE_SDL2
++   if (sdl->hw_ctx)
++      SDL_GL_DeleteContext(sdl->hw_ctx);
++   sdl->hw_ctx = NULL;
++
+    if (sdl->ctx)
+       SDL_GL_DeleteContext(sdl->ctx);
+ 
+@@ -275,6 +281,18 @@ static bool sdl_ctx_set_video_mode(void *data,
+       if (!(sdl->ctx = SDL_GL_CreateContext(sdl->win)))
+          goto error;
+    }
++
++   if (sdl->use_hw_ctx && !sdl->hw_ctx)
++   {
++      SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 1);
++      sdl->hw_ctx = SDL_GL_CreateContext(sdl->win);
++      SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 0);
++      if (sdl->hw_ctx)
++         RARCH_LOG("[SDL GL] Created shared context for the core.\n");
++      else
++         RARCH_WARN("[SDL GL] Failed to create shared context: %s.\n", SDL_GetError());
++      SDL_GL_MakeCurrent(sdl->win, sdl->ctx);
++   }
+ #endif
+ 
+    sdl->full                    = fullscreen;
+@@ -438,6 +456,19 @@ static gfx_ctx_proc_t sdl_ctx_get_proc_address(const char *name)
+ 
+ static void sdl_ctx_show_mouse(void *data, bool state) { SDL_ShowCursor(state); }
+ 
++#ifdef HAVE_SDL2
++static void sdl_ctx_bind_hw_render(void *data, bool enable)
++{
++   gfx_ctx_sdl_data_t *sdl = (gfx_ctx_sdl_data_t*)data;
++
++   if (!sdl)
++      return;
++   sdl->use_hw_ctx = enable;
++   if (sdl->win && sdl->ctx)
++      SDL_GL_MakeCurrent(sdl->win, (enable && sdl->hw_ctx) ? sdl->hw_ctx : sdl->ctx);
++}
++#endif
++
+ static uint32_t sdl_ctx_get_flags(void *data)
+ {
+    uint32_t flags = 0;
+@@ -480,7 +511,11 @@ const gfx_ctx_driver_t gfx_ctx_sdl_gl =
+    "gl_sdl",
+    sdl_ctx_get_flags,
+    sdl_ctx_set_flags,
++#ifdef HAVE_SDL2
++   sdl_ctx_bind_hw_render,
++#else
+    NULL, /* bind_hw_render */
++#endif
+    NULL,
+    NULL
+ };
