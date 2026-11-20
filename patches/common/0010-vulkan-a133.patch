@@ -1,0 +1,60 @@
+diff --git a/gfx/common/vulkan_common.c b/gfx/common/vulkan_common.c
+index e4f7c0852c..172349eb64 100644
+--- a/gfx/common/vulkan_common.c
++++ b/gfx/common/vulkan_common.c
+@@ -1010,7 +1010,10 @@ static bool vulkan_update_display_mode(
+       int dist              = delta_x     * delta_x     + delta_y     * delta_y;
+       int old_dist          = old_delta_x * old_delta_x + old_delta_y * old_delta_y;
+ 
+-      if (dist < old_dist && delta_rate < 1000)
++      /* Some PowerVR drivers report refresh rates with incorrect units.
++      * Ignore refresh-rate matching when the reported value is implausibly low.
++      */
++      if (dist < old_dist && (visible_rate < 1000 || delta_rate < 1000))
+       {
+          *width       = visible_width;
+          *height      = visible_height;
+@@ -2300,9 +2303,6 @@ bool vulkan_create_swapchain(gfx_ctx_vulkan_data_t *vk,
+    info.clipped                = VK_TRUE;
+    info.oldSwapchain           = old_swapchain;
+ 
+-   info.oldSwapchain = VK_NULL_HANDLE;
+-   if (old_swapchain != VK_NULL_HANDLE)
+-      vkDestroySwapchainKHR(vk->context.device, old_swapchain, NULL);
+ 
+ #ifdef VK_USE_PLATFORM_WIN32_KHR
+    /* Tie exclusive mode to the window's monitor. */
+@@ -2321,6 +2321,10 @@ bool vulkan_create_swapchain(gfx_ctx_vulkan_data_t *vk,
+       return false;
+    }
+ 
++   info.oldSwapchain = VK_NULL_HANDLE;
++   if (old_swapchain != VK_NULL_HANDLE)
++      vkDestroySwapchainKHR(vk->context.device, old_swapchain, NULL);
++
+    vk->context.swapchain_width        = swapchain_size.width;
+    vk->context.swapchain_height       = swapchain_size.height;
+ #ifdef VULKAN_HDR_SWAPCHAIN
+diff --git a/gfx/drivers_context/khr_display_ctx.c b/gfx/drivers_context/khr_display_ctx.c
+index 138490dfa1..f92f6500c3 100644
+--- a/gfx/drivers_context/khr_display_ctx.c
++++ b/gfx/drivers_context/khr_display_ctx.c
+@@ -113,6 +113,18 @@ static bool gfx_ctx_khr_display_set_resize(void *data,
+ {
+    khr_display_ctx_data_t *khr = (khr_display_ctx_data_t*)data;
+ 
++   if (     (khr->vk.swapchain != VK_NULL_HANDLE)
++         && (khr->vk.context.swapchain_width  == width)
++         && (khr->vk.context.swapchain_height == height)
++         && (khr->swap_interval == khr->vk.context.swap_interval)
++         && !(khr->vk.flags & VK_DATA_FLAG_NEED_NEW_SWAPCHAIN))
++   {
++      khr->width                  = width;
++      khr->height                 = height;
++      khr->vk.context.flags      &= ~VK_CTX_FLAG_INVALID_SWAPCHAIN;
++      return true;
++   }
++
+    khr->width                  = width;
+    khr->height                 = height;
+ 
